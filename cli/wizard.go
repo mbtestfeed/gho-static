@@ -8,6 +8,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"gho-static/deployment"
+	"gho-static/deployment/github_pages"
 	"gho-static/gho_static"
 )
 
@@ -43,20 +45,25 @@ func AskDate(r *bufio.Reader, mdPath string) time.Time {
 }
 
 // askDeploymentMethod asks how the build folder will be published.
-func askDeploymentMethod(r *bufio.Reader) DeploymentMethod {
+func askDeploymentMethod(r *bufio.Reader) deployment.Method {
 	for {
 		switch strings.ToLower(ask(r, "How will you deploy the site? ", []string{"1: GitHub Pages", "2: none (default)"})) {
 		case "", "2", "none":
-			return NoMethod
+			return deployment.None
 		case "1", "github pages":
-			return GitHubPages
+			return deployment.GitHubPages
 		}
 	}
 }
 
-// askRepo asks for the GitHub repo to push the build folder to.
+// askRepo asks for a GitHub username and returns the URL of their
+// <user>.github.io repo, or "" if none is given.
 func askRepo(r *bufio.Reader) string {
-	return ask(r, "GitHub repo URL: ", []string{"e.g. https://github.com/<user>/<user>.github.io.git, or press enter to add it later"})
+	user := ask(r, "GitHub username: ", []string{"the site is published from the <username>.github.io repo, or press enter to add it later"})
+	if user == "" {
+		return ""
+	}
+	return github_pages.RepoURL(user)
 }
 
 // askPreferences asks whether to use the default preferences and, if not,

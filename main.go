@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"gho-static/cli"
+	"gho-static/deployment"
 	"gho-static/generator"
 	"gho-static/gho_static"
 )
@@ -66,6 +67,10 @@ func main() {
 	case cli.Build:
 		err = build(cmd.Site, "", cmd.Options)
 	case cli.GenerateSite:
+		// Checked first, so nothing is generated if the repo isn't ready.
+		if err := deployment.Check(cmd.Method, cmd.Repo); err != nil {
+			fail(err)
+		}
 		images, _ := fs.Sub(img, "img")
 		err = generator.Generate(cmd.GenPath, cmd.Prefs, images)
 	case cli.GeneratePage:
@@ -73,16 +78,19 @@ func main() {
 	case cli.GeneratePost:
 		err = generator.GeneratePost(cmd.GenPath, cmd.PostName)
 	case cli.SetupDeployment:
-		buildDir := filepath.Join(cmd.Site, "build")
-		if _, err = os.Stat(buildDir); os.IsNotExist(err) {
+		err = deployment.Setup(filepath.Join(cmd.Site, "build"), cmd.Method, cmd.Repo)
+		if err == nil {
 			err = build(cmd.Site, cmd.Site, cmd.Options)
-		}
-		if err == nil && cmd.Method == cli.GitHubPages {
-			err = generator.InitRepo(buildDir, cmd.Repo)
 		}
 		if err != nil {
 			fail(err)
 		}
+		return
+	case cli.Deploy:
+		if err := deployment.Deploy(cmd.Site, cmd.Method, cmd.Repo); err != nil {
+			fail(err)
+		}
+		fmt.Printf("Deployed %s.\n", cmd.Site)
 		return
 	}
 	if cmd.Mode != cli.Build && os.IsExist(err) {
@@ -96,14 +104,13 @@ func main() {
 	}
 
 	if cmd.Mode == cli.GenerateSite {
+		// Set up (pulling any existing repo) before building into it.
+		if err := deployment.Setup(filepath.Join(cmd.GenPath, "build"), cmd.Method, cmd.Repo); err != nil {
+			fail(fmt.Errorf("%s was generated, but its build folder couldn't be set up for deployment: %w", cmd.GenPath, err))
+		}
 		// Build inside the new folder so an existing ./build isn't replaced.
 		if err := build(cmd.GenPath, cmd.GenPath, cmd.Options); err != nil {
 			fail(err)
-		}
-		if cmd.Method == cli.GitHubPages {
-			if err := generator.InitRepo(filepath.Join(cmd.GenPath, "build"), cmd.Repo); err != nil {
-				fail(fmt.Errorf("%s was generated, but its build folder couldn't be set up for GitHub Pages: %w", cmd.GenPath, err))
-			}
 		}
 		fmt.Print(cli.Grey + cli.Usage + cli.Reset + "\n")
 		fmt.Printf("Congrats! You now have a default static site demo, built locally. You can view what this looks like at:\n    %s\n", cli.Link+fileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+cli.Reset)

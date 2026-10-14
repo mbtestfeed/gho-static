@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"gho-static/deployment"
 	"gho-static/generator"
 	"gho-static/gho_static"
 	"gho-static/utils"
@@ -40,6 +41,13 @@ Flags:
                           folder/index.html and linked by folder. Drafts and
                           unreleased pages are always skipped, overriding -d/-u.
   -y, --yes               With -g, use the default preferences without asking.
+                          With --deploy, fail instead of asking for anything
+                          that isn't set up.
+  --deploy                Build <site folder> for publishing (-p) and deploy
+                          it, using the deployment method its build folder is
+                          set up for, or asking for one if there isn't one.
+                          For GitHub Pages, commits the build folder and
+                          pushes it.
   --deployment-method <github-pages|none>
                           Set up <site folder>/build for publishing, building
                           it first if it doesn't exist. github-pages makes it a
@@ -60,7 +68,8 @@ const (
 	GenerateSite             // create a starter site at GenPath with Prefs, then build it
 	GeneratePage             // create a draft page at GenPath in Site, then build Site
 	GeneratePost             // create a draft post PostName at GenPath in Site, then build Site
-	SetupDeployment          // set up Site's build folder for DeploymentMethod, building it if missing
+	SetupDeployment          // set up Site's build folder for Method, building it if missing
+	Deploy                   // build Site for publishing and deploy it with Method
 )
 
 // Command is the work requested on the command line.
@@ -71,20 +80,9 @@ type Command struct {
 	PostName string // only set for GeneratePost
 	Options  gho_static.Options
 	Prefs    gho_static.Preferences // only set for GenerateSite
-	Method   DeploymentMethod       // only set for GenerateSite and SetupDeployment
-	Repo     string                 // git remote for the build folder, only set for GitHubPages
+	Method   deployment.Method      // only set for GenerateSite, SetupDeployment and Deploy
+	Repo     string                 // git remote for the build folder, only set for GitHub Pages
 }
-
-// DeploymentMethod is how a site's build folder is set up for publishing.
-type DeploymentMethod int
-
-const (
-	NoMethod    DeploymentMethod = iota
-	GitHubPages                  // build folder is a git repo pushed to GitHub Pages
-)
-
-// deploymentMethods maps each --deployment-method value to its method.
-var deploymentMethods = map[string]DeploymentMethod{"none": NoMethod, "github-pages": GitHubPages}
 
 // Parse reads args (without the program name) into a Command, asking for
 // the starter site's preferences when generating a site.
@@ -92,7 +90,7 @@ func Parse(args []string) (Command, error) {
 	flags, positional := utils.ParseArgs(args)
 
 	var cmd Command
-	generate, useDefaults := false, false
+	generate, useDefaults, deploying := false, false, false
 	methodFlag, method, repoGiven := false, "", false
 	for _, f := range flags {
 		switch f.Key {
@@ -101,7 +99,7 @@ func Parse(args []string) (Command, error) {
 			continue
 		case "deployment-method":
 			methodFlag, method = true, f.Val
-			if _, ok := deploymentMethods[method]; !ok && method != "" {
+			if _, ok := deployment.Methods[method]; !ok && method != "" {
 				// No method given, so ParseArgs took the site folder as one.
 				if info, err := os.Stat(method); err != nil || !info.IsDir() {
 					return cmd, fmt.Errorf("unknown deployment method %q: use github-pages or none", method)
@@ -120,6 +118,8 @@ func Parse(args []string) (Command, error) {
 			cmd.Options.Publish = true
 		case "y", "yes":
 			useDefaults = true
+		case "deploy":
+			deploying = true
 		default:
 			continue
 		}
@@ -145,17 +145,34 @@ func Parse(args []string) (Command, error) {
 	// chooseMethod sets the deployment method and repo from the flags,
 	// asking for any not given if ask is set.
 	chooseMethod := func(r *bufio.Reader, ask bool) {
-		cmd.Method = deploymentMethods[method]
+		cmd.Method = deployment.Methods[method]
 		if method == "" && ask {
 			cmd.Method = askDeploymentMethod(r)
 		}
-		if cmd.Method == GitHubPages && !repoGiven && ask {
+		if cmd.Method == deployment.GitHubPages && !repoGiven && ask {
 			cmd.Repo = askRepo(r)
 		}
 	}
 
 	if !generate {
 		cmd.Site = positional[0]
+		if deploying {
+			cmd.Mode = Deploy
+			if !methodFlag {
+				existing, repo := deployment.Detect(filepath.Join(cmd.Site, "build"))
+				if existing != deployment.None {
+					method = "github-pages"
+				}
+				if repo != "" && !repoGiven {
+					cmd.Repo, repoGiven = repo, true
+				}
+			}
+			if useDefaults && (method == "" || (deployment.Methods[method] == deployment.GitHubPages && !repoGiven)) {
+				return cmd, fmt.Errorf("%s has no deployment method or GitHub repo set up, and --yes stops them being asked for. Rerun without --yes, or pass --deployment-method github-pages --repo <url>.", cmd.Site)
+			}
+			chooseMethod(bufio.NewReader(os.Stdin), true)
+			return cmd, nil
+		}
 		if methodFlag {
 			cmd.Mode = SetupDeployment
 			chooseMethod(bufio.NewReader(os.Stdin), true)

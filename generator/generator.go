@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -191,25 +190,6 @@ func DatePost(mdPath string, date time.Time) error {
 		}
 	}
 	return nil
-}
-
-// InitRepo makes dir a git repo (if it isn't already), with remote origin
-// set to repo if given.
-func InitRepo(dir, repo string) error {
-	git := func(args ...string) error {
-		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
-			return fmt.Errorf("git %s failed: %w\n%s", strings.Join(args, " "), err, out)
-		}
-		return nil
-	}
-	if err := git("init"); err != nil || repo == "" {
-		return err
-	}
-	// Checked after init, so a parent folder's repo isn't mistaken for dir's.
-	if git("remote", "get-url", "origin") == nil {
-		return git("remote", "set-url", "origin", repo)
-	}
-	return git("remote", "add", "origin", repo)
 }
 
 // addFiles adds each file in fsys to files, at its path with prefix added.
