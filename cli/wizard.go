@@ -44,6 +44,30 @@ func AskDate(r *bufio.Reader, mdPath string) time.Time {
 	}
 }
 
+// AskToPublishDraft asks whether to publish the draft page at mdPath.
+func AskToPublishDraft(r *bufio.Reader, mdPath string) bool {
+	for {
+		switch strings.ToLower(ask(r, mdPath+" is a draft. Publish it? Y/N ", []string{"press enter for no"})) {
+		case "y", "yes":
+			return true
+		case "", "n", "no":
+			return false
+		}
+	}
+}
+
+// askNavLink asks whether to add a menu link for the content folder name.
+func askNavLink(r *bufio.Reader, name string) bool {
+	for {
+		switch strings.ToLower(ask(r, "Add a menu link for "+name+"? Y/N ", []string{"press enter for yes"})) {
+		case "", "y", "yes":
+			return true
+		case "n", "no":
+			return false
+		}
+	}
+}
+
 // askDeploymentMethod asks how the build folder will be published.
 func askDeploymentMethod(r *bufio.Reader) deployment.Method {
 	for {
@@ -77,12 +101,14 @@ func askPreferences(r *bufio.Reader) gho_static.Preferences {
 		case "", "y", "yes":
 			return prefs
 		case "n", "no":
+			// Nav links are asked for comma separated.
+			navLinks := strings.Join(prefs.NavLinks, ",")
 			for _, f := range []struct {
 				name string
 				val  *string
 			}{
 				{"site_name", &prefs.SiteName},
-				{"nav_links", &prefs.NavLinks},
+				{"nav_links (comma separated)", &navLinks},
 				{"banner_color (light)", &prefs.BannerColor.Light},
 				{"banner_color (dark)", &prefs.BannerColor.Dark},
 				{"banner_text_color (light)", &prefs.BannerTextColor.Light},
@@ -95,14 +121,38 @@ func askPreferences(r *bufio.Reader) gho_static.Preferences {
 				{"link (dark)", &prefs.Link.Dark},
 				{"link_clicked (light)", &prefs.LinkClicked.Light},
 				{"link_clicked (dark)", &prefs.LinkClicked.Dark},
+				{"tag_color (light)", &prefs.TagColor.Light},
+				{"tag_color (dark)", &prefs.TagColor.Dark},
+				{"tag_text_color (light)", &prefs.TagTextColor.Light},
+				{"tag_text_color (dark)", &prefs.TagTextColor.Dark},
 				{"font", &prefs.Font},
 				{"logo", &prefs.Logo},
 				{"favicon", &prefs.Favicon},
+				{"default_author", &prefs.DefaultAuthor},
+				{"intro_sidebar_image", &prefs.IntroSidebarImage},
+				{"intro_name", &prefs.IntroName},
+				{"intro_description", &prefs.IntroDescription},
 			} {
 				if v := ask(r, f.name+": ", []string{"press enter to accept default value: " + *f.val}); v != "" {
 					*f.val = v
 				}
 			}
+			for _, f := range []struct {
+				name string
+				val  *bool
+			}{
+				{"show_intro_sidebar", &prefs.ShowIntroSidebar},
+				{"show_recent_blogs_sidebar", &prefs.ShowRecentBlogsSidebar},
+			} {
+				def := map[bool]string{true: "Y", false: "N"}[*f.val]
+				switch strings.ToLower(ask(r, f.name+" Y/N: ", []string{"press enter to accept default value: " + def})) {
+				case "y", "yes", "true":
+					*f.val = true
+				case "n", "no", "false":
+					*f.val = false
+				}
+			}
+			prefs.NavLinks = strings.Split(navLinks, ",")
 			return prefs
 		}
 	}

@@ -1,0 +1,11 @@
+.tag-links {
+    list-style: none;
+}
+
+.tag-links li {
+    margin-bottom: 20px;
+}
+
+.tag-date {
+    opacity: 0.6;
+}

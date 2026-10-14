@@ -53,10 +53,37 @@ func titleFor(name string) string {
 	return string(title)
 }
 
+// pageMeta is the front matter of a generated page, other than its title
+// and published date. Unset author and edited lines are left out.
+type pageMeta struct {
+	summary, author, edited string
+	draft, toc              bool
+	tags                    []string
+}
+
 // contentPage returns the contents of a generic page or post titled after
-// name, published on date.
-func contentPage(name string, date time.Time, draft bool) string {
-	return fmt.Sprintf(contentPageTemplate, titleFor(name), date.Format("2006-01-02"), draft)
+// name, published on date, with meta.
+func contentPage(name string, date time.Time, meta pageMeta) string {
+	line := func(key, val string) string {
+		if val == "" {
+			return ""
+		}
+		return key + ": " + val + "\n"
+	}
+	summary := meta.summary
+	if summary != "" {
+		summary = " " + summary
+	}
+	return fmt.Sprintf(contentPageTemplate, titleFor(name), summary, line("author", meta.author), date.Format("2006-01-02"),
+		line("edited", meta.edited), meta.draft, meta.toc, strings.Join(meta.tags, ", "))
+}
+
+// examplePosts are the front matter of each example blog post, in order.
+// The first summary is long enough to show it being cut short in listings.
+var examplePosts = []pageMeta{
+	{summary: "The first example post. Its summary runs on for a while, so that the blogs page shows how a long summary is cut short with an ellipsis once it passes two hundred characters, rather than filling the listing.", toc: true, tags: []string{"example tag", "another example tag"}},
+	{summary: "The second example post.", tags: []string{"different example tag", "example tag"}},
+	{summary: "The third example post, without tags."},
 }
 
 // listingPage returns the contents of a post listing page titled after name.
@@ -89,6 +116,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
 	}{
 		{"logo", &prefs.Logo, gho_static.DefaultPreferences.Logo},
 		{"favicon", &prefs.Favicon, gho_static.DefaultPreferences.Favicon},
+		{"intro sidebar image", &prefs.IntroSidebarImage, gho_static.DefaultPreferences.IntroSidebarImage},
 	} {
 		if *img.path == img.defaultVal {
 			continue
@@ -112,12 +140,20 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
 	}
 	now := time.Now()
 	files["preferences.yaml"] = string(prefsYAML)
-	for i := range 3 {
+	// Example pages use every front matter field, so they show what's possible.
+	author := prefs.DefaultAuthor
+	if author == "" {
+		author = "Gho-Static"
+	}
+	edited := now.Format("2006-01-02")
+	for i, meta := range examplePosts {
 		name, date := fmt.Sprintf("example_%d", i+1), now.AddDate(0, -i, 0)
-		addPage(files, "content/blogs/"+PostFolder(name, date)+"/post", ".md", contentPage(name, date, false), "")
+		meta.author, meta.edited = author, edited
+		addPage(files, "content/blogs/"+PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
 	}
 	for _, name := range []string{"about", "contact"} {
-		addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, false), "")
+		meta := pageMeta{summary: "The site's " + name + " page.", author: author, edited: edited, tags: []string{"example tag"}}
+		addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, meta), "")
 	}
 	files["content/contact/contact.md"] += contactText
 	addPage(files, "content/blogs/blogs", ".html", listingPage("blogs"), listingCSS)
@@ -125,21 +161,21 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
 }
 
 // GeneratePage creates the folder dir and writes a draft content page into
-// it, named and titled after the folder.
-func GeneratePage(dir string) error {
+// it, named and titled after the folder, by author if set.
+func GeneratePage(dir, author string) error {
 	if err := newFolder(dir); err != nil {
 		return err
 	}
 	name := filepath.Base(dir)
 	files := map[string]string{}
-	addPage(files, name, ".md", contentPage(name, time.Now(), true), "")
+	addPage(files, name, ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true}), "")
 	return writeFiles(dir, files)
 }
 
 // GeneratePost creates the folder dir and writes a draft post.md for post
-// name, published today, into it. If dir's parent folder doesn't exist, it
-// is created with a listing page named after it.
-func GeneratePost(dir, name string) error {
+// name, published today, by author if set, into it. If dir's parent folder
+// doesn't exist, it is created with a listing page named after it.
+func GeneratePost(dir, name, author string) error {
 	parent := filepath.Dir(dir)
 	files := map[string]string{}
 	if _, err := os.Stat(parent); os.IsNotExist(err) {
@@ -149,7 +185,7 @@ func GeneratePost(dir, name string) error {
 	if err := newFolder(dir); err != nil {
 		return err
 	}
-	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, time.Now(), true), "")
+	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true}), "")
 	return writeFiles(parent, files)
 }
 
@@ -188,6 +224,30 @@ func DatePost(mdPath string, date time.Time) error {
 		if err := os.Rename(dir, newDir); err != nil {
 			return fmt.Errorf("failed to rename %s: %w", dir, err)
 		}
+	}
+	return nil
+}
+
+// PublishDraft removes the draft line from the front matter of the markdown
+// page at mdPath.
+func PublishDraft(mdPath string) error {
+	mdBytes, err := os.ReadFile(mdPath)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", mdPath, err)
+	}
+	md := strings.ReplaceAll(string(mdBytes), "\r\n", "\n")
+	end := strings.Index(md[min(4, len(md)):], "\n---")
+	if !strings.HasPrefix(md, "---\n") || end == -1 {
+		return nil
+	}
+	header := strings.Split(md[4:4+end], "\n")
+	header = slices.DeleteFunc(header, func(line string) bool {
+		key, _, _ := strings.Cut(line, ":")
+		return strings.TrimSpace(key) == "draft"
+	})
+	md = "---\n" + strings.Join(header, "\n") + md[4+end:]
+	if err := os.WriteFile(mdPath, []byte(md), 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", mdPath, err)
 	}
 	return nil
 }

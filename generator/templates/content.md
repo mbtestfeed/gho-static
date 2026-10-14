@@ -1,7 +1,10 @@
 ---
 title: %[1]s
-published: %[2]s
-draft: %[3]t
+summary:%[2]s
+%[3]spublished: %[4]s
+%[5]sdraft: %[6]t
+toc: %[7]t
+tags: [%[8]s]
 ---
 
 # %[1]s

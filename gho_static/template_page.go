@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"gho-static/utils/file_access"
 )
@@ -19,12 +21,29 @@ type SubPage struct {
 	Published  string // yyyy/mm/dd, or empty if unset
 	Draft      bool
 	Unreleased bool // published date is still in the future
+	Summary    string // front matter summary, truncated to 200 characters
+	Tags       []Tag  // the page's tags, without their Pages
 	published  time.Time
+}
+
+// summaryLength is the most characters of a page's summary shown in links
+// to it, including the "..." added when it's cut short.
+const summaryLength = 200
+
+// truncate returns s cut to summaryLength characters, ending in "..." if
+// anything was cut.
+func truncate(s string) string {
+	if r := []rune(s); len(r) > summaryLength {
+		return string(r[:summaryLength-3]) + "..."
+	}
+	return s
 }
 
 // pageLink builds a link to the markdown page at mdPath (under the content
 // folder root), or returns nil if opts doesn't allow its folder to be built.
-func pageLink(mdPath, root string, opts Options) (*SubPage, error) {
+// listed is whether the page's folder is listed by its parent's template
+// page, so isn't published without a date.
+func pageLink(mdPath, root string, opts Options, listed bool) (*SubPage, error) {
 	draft, unreleased, err := folderStatus(filepath.Dir(mdPath))
 	if err != nil {
 		return nil, err
@@ -51,8 +70,12 @@ func pageLink(mdPath, root string, opts Options) (*SubPage, error) {
 		meta.Title = strings.ToUpper(title[:1]) + title[1:]
 	}
 	published, ok := parseDate(meta.Published)
-	if !ok && opts.Publish {
+	if !ok && opts.Publish && listed {
 		return nil, nil
+	}
+	var tags []Tag
+	for _, name := range meta.Tags {
+		tags = append(tags, newTag(name, root, opts.Publish))
 	}
 	return &SubPage{
 		Title:      meta.Title,
@@ -60,6 +83,8 @@ func pageLink(mdPath, root string, opts Options) (*SubPage, error) {
 		Published:  formatDate(meta.Published),
 		Draft:      draft,
 		Unreleased: meta.Unreleased(),
+		Summary:    truncate(meta.Summary),
+		Tags:       tags,
 		published:  published,
 	}, nil
 }
@@ -73,7 +98,7 @@ func subPages(dir *file_access.ContentDir, root string, opts Options) ([]SubPage
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
 				continue
 			}
-			link, err := pageLink(f, root, opts)
+			link, err := pageLink(f, root, opts, true)
 			if err != nil {
 				return nil, err
 			}
@@ -84,6 +109,132 @@ func subPages(dir *file_access.ContentDir, root string, opts Options) ([]SubPage
 	}
 	slices.SortFunc(pages, func(a, b SubPage) int { return b.published.Compare(a.published) })
 	return pages, nil
+}
+
+// recentPages returns the n most recently published pages listed by any
+// template page in content (the content folder root), skipping folders opts
+// doesn't allow.
+func recentPages(content *file_access.ContentDir, opts Options, n int) ([]SubPage, error) {
+	var pages []SubPage
+	var walk func(dir *file_access.ContentDir) error
+	walk = func(dir *file_access.ContentDir) error {
+		if hasListing(dir) {
+			subs, err := subPages(dir, content.Path, opts)
+			if err != nil {
+				return err
+			}
+			pages = append(pages, subs...)
+		}
+		for _, sub := range dir.Dirs {
+			if err := walk(sub); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(content); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(pages, func(a, b SubPage) int { return b.published.Compare(a.published) })
+	return pages[:min(n, len(pages))], nil
+}
+
+// Tag is a front matter tag, with links to the pages that have it.
+type Tag struct {
+	Name  string
+	Link  string    // to the tag's page, relative to the build folder, or empty if the site has no tags page
+	Pages []SubPage // ordered most recently published first
+	file  string    // the tag's page, relative to the build folder
+}
+
+// tagsDir is the content folder whose tagsDir.html template page lists the
+// site's tags, and is rendered again for each tag's own page in a subfolder.
+const tagsDir = "tags"
+
+// collectTags gathers the tags of the markdown pages in content (the content
+// folder root) that opts allows to be built, ordered by name.
+func collectTags(content *file_access.ContentDir, opts Options) ([]Tag, error) {
+	byKey := map[string]*Tag{}
+	var walk func(dir *file_access.ContentDir, listed bool) error
+	walk = func(dir *file_access.ContentDir, listed bool) error {
+		for _, f := range dir.Files {
+			if !strings.EqualFold(filepath.Ext(f), ".md") {
+				continue
+			}
+			mdBytes, err := os.ReadFile(f)
+			if err != nil {
+				return fmt.Errorf("failed to read %s: %w", f, err)
+			}
+			meta, _ := parseFrontMatter(mdBytes)
+			if len(meta.Tags) == 0 {
+				continue
+			}
+			link, err := pageLink(f, content.Path, opts, listed)
+			if err != nil {
+				return err
+			}
+			if link == nil {
+				continue
+			}
+			for _, name := range meta.Tags {
+				// Tags differing only in case or punctuation share a page.
+				key := tagSlug(name)
+				t := byKey[key]
+				if t == nil {
+					tag := newTag(name, content.Path, opts.Publish)
+					t = &tag
+					byKey[key] = t
+				}
+				t.Pages = append(t.Pages, *link)
+			}
+		}
+		for _, sub := range dir.Dirs {
+			if err := walk(sub, hasListing(dir)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(content, false); err != nil {
+		return nil, err
+	}
+
+	var tags []Tag
+	for _, t := range byKey {
+		slices.SortFunc(t.Pages, func(a, b SubPage) int { return b.published.Compare(a.published) })
+		tags = append(tags, *t)
+	}
+	slices.SortFunc(tags, func(a, b Tag) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	return tags, nil
+}
+
+// newTag returns the tag name, linked to its page if the content folder
+// root has a tags template page.
+func newTag(name, root string, publish bool) Tag {
+	key := tagSlug(name)
+	t := Tag{Name: name, file: path.Join(tagsDir, key, "index.html")}
+	if _, err := os.Stat(filepath.Join(root, tagsDir, tagsDir+".html")); err == nil {
+		t.Link = t.file
+		if publish {
+			t.Link = path.Join(tagsDir, key) + "/"
+		}
+	}
+	return t
+}
+
+// tagSlug returns name lowercased, with anything other than letters, digits,
+// - and _ replaced by -, for use as a folder name.
+func tagSlug(name string) string {
+	slug := strings.Trim(strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+			return unicode.ToLower(r)
+		}
+		return '-'
+	}, name), "-")
+	if slug == "" {
+		return "tag"
+	}
+	return slug
 }
 
 // PostName returns folder without its leading yyyymmdd date and the
@@ -150,6 +301,38 @@ func UndatedPages(srcDir string) ([]string, error) {
 	return pages, walk(content, false)
 }
 
+// DraftPages returns the markdown files in srcDir's content folder marked
+// as drafts.
+func DraftPages(srcDir string) ([]string, error) {
+	content, err := file_access.CrawlContent(filepath.Join(srcDir, "content"))
+	if err != nil {
+		return nil, err
+	}
+	var pages []string
+	var walk func(dir *file_access.ContentDir) error
+	walk = func(dir *file_access.ContentDir) error {
+		for _, f := range dir.Files {
+			if !strings.EqualFold(filepath.Ext(f), ".md") {
+				continue
+			}
+			mdBytes, err := os.ReadFile(f)
+			if err != nil {
+				return fmt.Errorf("failed to read %s: %w", f, err)
+			}
+			if meta, _ := parseFrontMatter(mdBytes); meta.Draft {
+				pages = append(pages, f)
+			}
+		}
+		for _, sub := range dir.Dirs {
+			if err := walk(sub); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return pages, walk(content)
+}
+
 // adjacent returns the pages either side of link in pages (ordered most
 // recently published first): the older one as previous, the newer as next.
 func adjacent(pages []SubPage, link string) (previous, next *SubPage) {
@@ -175,6 +358,9 @@ func writeTemplatePage(tmpl *template.Template, page Page, subs []SubPage, tmplP
 	name := filepath.Base(tmplPath)
 	title := strings.TrimSuffix(name, filepath.Ext(name))
 	page.Meta.Title = strings.ToUpper(title[:1]) + title[1:]
+	if page.Tag != nil {
+		page.Meta.Title = page.Tag.Name
+	}
 
 	contentTmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {

@@ -1,0 +1,10 @@
+<ul class="recent-links">
+{{- range .Site.RecentBlogs}}
+    <li>
+        <a href="{{$.Root}}{{.Link}}">{{.Title}}</a>
+        {{- with .Published}}
+        <div class="recent-date">{{.}}</div>
+        {{- end}}
+    </li>
+{{- end}}
+</ul>

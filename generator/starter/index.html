@@ -2,7 +2,13 @@
 <html>
 <head>
     <meta charset="utf-8">
+    {{.Site.VersionComment}}
     <title>{{if and .Meta.Title (ne .Meta.Title .Site.Title)}}{{.Meta.Title}} - {{end}}{{.Site.Title}}</title>
+    <meta property="og:title" content="{{or .Meta.Title .Site.Title}}">
+{{- with .Meta.Summary}}
+    <meta name="description" content="{{.}}">
+    <meta property="og:description" content="{{.}}">
+{{- end}}
 {{- with .Site.Favicon}}
     <link rel="icon" href="{{$.Root}}{{.}}" sizes="any">
 {{- end}}
@@ -15,11 +21,12 @@
 </head>
 <body>
     <div id="header">{{.Header}}</div>
+    <div id="main">
     <div id="content">
     {{- if or .Meta.Author .Meta.DateLine}}
         <div class="byline">
         {{- with .Meta.Author}}
-            <span class="byline-author">{{.}}</span>
+            <span class="byline-author">Written by {{.}}</span>
         {{- end}}
         {{- with .Meta.DateLine}}
             <span class="byline-date">{{.}}</span>
@@ -36,6 +43,13 @@
         {{- end}}
         </div>
     {{- end}}{{template "pager" .}}{{.Content}}{{template "pager" .}}</div>
+    {{- with .IntroSidebar}}
+    <div id="intro-sidebar">{{.}}</div>
+    {{- end}}
+    {{- with .RecentBlogs}}
+    <div id="recent-blogs">{{.}}</div>
+    {{- end}}
+    </div>
     <div id="footer">{{.Footer}}</div>
 </body>
 </html>

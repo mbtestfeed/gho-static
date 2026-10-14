@@ -49,20 +49,22 @@ func Setup(buildDir string, method Method, repo string) error {
 }
 
 // Deploy checks everything method needs is in place, builds site for
-// publishing into its build folder and deploys it to repo.
-func Deploy(site string, method Method, repo string) error {
+// publishing into its build folder and deploys it to repo, returning the
+// build version.
+func Deploy(site string, method Method, repo string) (string, error) {
 	if method == None {
-		return fmt.Errorf("no deployment method is set up for %s, so there's nothing to deploy to", site)
+		return "", fmt.Errorf("no deployment method is set up for %s, so there's nothing to deploy to", site)
 	}
 	if err := github_pages.Check(repo); err != nil {
-		return err
+		return "", err
 	}
 	buildDir := filepath.Join(site, "build")
 	if err := github_pages.Setup(buildDir, repo); err != nil {
-		return err
+		return "", err
 	}
-	if err := gho_static.Build(site, site, gho_static.Options{Publish: true}); err != nil {
-		return err
+	version, err := gho_static.Build(site, site, gho_static.Options{Publish: true})
+	if err != nil {
+		return "", err
 	}
-	return github_pages.Push(buildDir)
+	return version, github_pages.Push(buildDir)
 }

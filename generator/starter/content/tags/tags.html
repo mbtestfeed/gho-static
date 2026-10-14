@@ -1,0 +1,33 @@
+{{- /* Rendered once listing every tag, then again as each tag's own page
+     (with .Tag set) listing the pages that have it. Both are regenerated
+     every build. */ -}}
+{{- with .Tag}}
+<h1>Tagged: {{.Name}}</h1>
+<ul class="tag-links">
+{{- range .Pages}}
+    <li>
+        <a href="{{$.Root}}{{.Link}}">{{.Title}}</a>
+        {{- with .Published}}
+        <div class="tag-date">Published on {{.}}</div>
+        {{- end}}
+        {{- with .Summary}}
+        <div class="tag-summary">{{.}}</div>
+        {{- end}}
+        {{- with .Tags}}
+        <div class="tag-tags">
+        {{- range .}}
+            {{if .Link}}<a class="tag" href="{{$.Root}}{{.Link}}">{{.Name}}</a>{{else}}<span class="tag">{{.Name}}</span>{{end}}
+        {{- end}}
+        </div>
+        {{- end}}
+    </li>
+{{- end}}
+</ul>
+{{- else}}
+<h1>Tags</h1>
+<ul class="tag-links">
+{{- range .Tags}}
+    <li><a class="tag" href="{{$.Root}}{{.Link}}">{{.Name}}</a> ({{len .Pages}})</li>
+{{- end}}
+</ul>
+{{- end}}

@@ -1,0 +1,45 @@
+/* Left of the content on wider screens, between 150px and 300px wide. */
+#intro-sidebar {
+    display: none;
+    padding: 15px;
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--banner-color) 50%, transparent);
+}
+
+@media (min-width: 801px) {
+    #intro-sidebar {
+        display: block;
+        grid-column: 1;
+        grid-row: 1;
+        justify-self: end;
+        width: min(300px, 100% - 40px);
+        min-width: 150px;
+        margin: calc(70px + 30px) 20px 30px 0;
+    }
+}
+
+/* The image fills the sidebar's width, cropped to a circle. */
+.intro-image {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 50%;
+    image-rendering: pixelated;
+}
+
+.intro-name {
+    margin-top: 10px;
+}
+
+.intro-description {
+    margin-top: 5px;
+}
+
+.social-links {
+    list-style: none;
+    margin-top: 10px;
+}
+
+.social-links a {
+    text-transform: capitalize;
+}

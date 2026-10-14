@@ -14,6 +14,8 @@
     --text-color: {{.TextColor.Light}};
     --link-color: {{.Link.Light}};
     --link-clicked-color: {{.LinkClicked.Light}};
+    --tag-color: {{.TagColor.Light}};
+    --tag-text-color: {{.TagTextColor.Light}};
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +26,8 @@
         --text-color: {{.TextColor.Dark}};
         --link-color: {{.Link.Dark}};
         --link-clicked-color: {{.LinkClicked.Dark}};
+        --tag-color: {{.TagColor.Dark}};
+        --tag-text-color: {{.TagTextColor.Dark}};
     }
 }
 
@@ -97,6 +101,24 @@ p, h1, h2, h3, h4, h5, h6 {
     font-size: 30px;
 }
 
+/* Tag pills: 0.7em text centred in a 1em (of the surrounding text) high
+   pill, never split over lines. */
+.tag,
+a.tag:visited {
+    display: inline-block;
+    height: calc(1em / 0.7);
+    line-height: calc(1em / 0.7);
+    padding: 0 0.6em;
+    margin-right: 0.4em;
+    font-size: 0.7em;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-radius: calc(0.5em / 0.7);
+    background-color: var(--tag-color);
+    color: var(--tag-text-color);
+    text-decoration: none;
+}
+
 .pager {
     display: flex;
     justify-content: space-between;
@@ -105,6 +127,25 @@ p, h1, h2, h3, h4, h5, h6 {
 
 .pager-next {
     margin-left: auto;
+}
+
+/* Wider screens put the sidebars either side of the content. The content
+   keeps its width, only narrowing to leave each sidebar its 150px (plus
+   20px either side), and stays centred between equal side columns. */
+@media (min-width: 801px) {
+    #main {
+        display: grid;
+        grid-template-columns: 1fr min(1500px, 60%, 100% - 2 * (150px + 40px)) 1fr;
+        align-items: start;
+    }
+
+    #main > #content {
+        grid-column: 2;
+        grid-row: 1;
+        width: auto;
+        margin-left: 0;
+        margin-right: 0;
+    }
 }
 
 @media (max-width: 800px) {

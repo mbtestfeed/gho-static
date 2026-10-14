@@ -20,7 +20,7 @@ const Grey, Red, Link, Reset = "\033[90m", "\033[31m", "\033[32;40m", "\033[0m"
 
 const Usage = `Usage: gho-static [flags] <site folder>
 
-Builds the site in <site folder> into ./build.
+Builds the site in <site folder> into <site folder>/build.
 
 Flags:
   -g, --generate <path>   Create a new folder at <path>, fill it with a default
@@ -43,6 +43,9 @@ Flags:
   -y, --yes               With -g, use the default preferences without asking.
                           With --deploy, fail instead of asking for anything
                           that isn't set up.
+  --drafts                Go through each draft page in <site folder>, asking
+                          whether to publish it (removing its "draft: true").
+                          With --yes, publishes them all.
   --deploy                Build <site folder> for publishing (-p) and deploy
                           it, using the deployment method its build folder is
                           set up for, or asking for one if there isn't one.
@@ -70,6 +73,7 @@ const (
 	GeneratePost             // create a draft post PostName at GenPath in Site, then build Site
 	SetupDeployment          // set up Site's build folder for Method, building it if missing
 	Deploy                   // build Site for publishing and deploy it with Method
+	PublishDrafts            // ask whether to publish each of Site's draft pages
 )
 
 // Command is the work requested on the command line.
@@ -78,6 +82,8 @@ type Command struct {
 	Site     string // site folder to build; unset for GenerateSite
 	GenPath  string // folder to generate
 	PostName string // only set for GeneratePost
+	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
+	Yes      bool   // answer yes to every question (--yes)
 	Options  gho_static.Options
 	Prefs    gho_static.Preferences // only set for GenerateSite
 	Method   deployment.Method      // only set for GenerateSite, SetupDeployment and Deploy
@@ -90,7 +96,7 @@ func Parse(args []string) (Command, error) {
 	flags, positional := utils.ParseArgs(args)
 
 	var cmd Command
-	generate, useDefaults, deploying := false, false, false
+	generate, useDefaults, deploying, drafts := false, false, false, false
 	methodFlag, method, repoGiven := false, "", false
 	for _, f := range flags {
 		switch f.Key {
@@ -120,6 +126,8 @@ func Parse(args []string) (Command, error) {
 			useDefaults = true
 		case "deploy":
 			deploying = true
+		case "drafts":
+			drafts = true
 		default:
 			continue
 		}
@@ -156,6 +164,10 @@ func Parse(args []string) (Command, error) {
 
 	if !generate {
 		cmd.Site = positional[0]
+		if drafts {
+			cmd.Mode, cmd.Yes = PublishDrafts, useDefaults
+			return cmd, nil
+		}
 		if deploying {
 			cmd.Mode = Deploy
 			if !methodFlag {
@@ -218,5 +230,19 @@ func Parse(args []string) (Command, error) {
 		cmd.PostName = parts[2]
 		cmd.GenPath = filepath.Join(cmd.Site, parts[0], parts[1], generator.PostFolder(cmd.PostName, time.Now()))
 	}
+	// Offer a menu link for a new first-level folder, whether it's the page
+	// itself or the parent of a new post.
+	if _, err := os.Stat(filepath.Join(cmd.Site, "content", parts[1])); os.IsNotExist(err) {
+		if useDefaults || (Interactive() && askNavLink(bufio.NewReader(os.Stdin), parts[1])) {
+			cmd.NavLink = parts[1]
+		}
+	}
 	return cmd, nil
+}
+
+// Interactive reports whether stdin is a terminal someone can answer
+// questions from.
+func Interactive() bool {
+	info, err := os.Stdin.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

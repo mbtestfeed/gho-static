@@ -6,6 +6,16 @@
         {{- with .Published}}
         <div class="blog-date">Published on {{.}}</div>
         {{- end}}
+        {{- with .Summary}}
+        <div class="blog-summary">{{.}}</div>
+        {{- end}}
+        {{- with .Tags}}
+        <div class="blog-tags">
+        {{- range .}}
+            {{if .Link}}<a class="tag" href="{{$.Root}}{{.Link}}">{{.Name}}</a>{{else}}<span class="tag">{{.Name}}</span>{{end}}
+        {{- end}}
+        </div>
+        {{- end}}
         {{- if or .Draft .Unreleased}}
         <div class="warnings">
         {{- if .Draft}}

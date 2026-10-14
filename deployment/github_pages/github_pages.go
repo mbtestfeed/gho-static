@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"gho-static/utils"
 	gitclient "gho-static/utils/git-client"
 )
 
@@ -16,15 +17,32 @@ func RepoURL(user string) string {
 	return "git@github.com:" + user + "/" + user + ".github.io.git"
 }
 
-// RepoLinks returns the links to create repo (an SSH or HTTPS GitHub repo
-// URL) and to its GitHub Pages settings.
-func RepoLinks(repo string) (create, settings string) {
+// repoPath returns the owner and name of repo, an SSH or HTTPS GitHub repo
+// URL.
+func repoPath(repo string) (owner, name string) {
 	path := strings.TrimSuffix(repo, ".git")
 	for _, prefix := range []string{"git@github.com:", "https://github.com/"} {
 		path = strings.TrimPrefix(path, prefix)
 	}
-	owner, name, _ := strings.Cut(path, "/")
-	return "https://github.com/new?owner=" + owner + "&name=" + name, "https://github.com/" + path + "/settings/pages"
+	owner, name, _ = strings.Cut(path, "/")
+	return owner, name
+}
+
+// RepoLinks returns the links to create repo and to its GitHub Pages
+// settings.
+func RepoLinks(repo string) (create, settings string) {
+	owner, name := repoPath(repo)
+	return "https://github.com/new?owner=" + owner + "&name=" + name, "https://github.com/" + owner + "/" + name + "/settings/pages"
+}
+
+// PagesURL returns the address repo's GitHub Pages site is served at: the
+// root for a <owner>.github.io repo, otherwise a folder named after it.
+func PagesURL(repo string) string {
+	owner, name := repoPath(repo)
+	if strings.EqualFold(name, owner+".github.io") {
+		return "https://" + name + "/"
+	}
+	return "https://" + owner + ".github.io/" + name + "/"
 }
 
 // CheckRepo returns an error explaining how to create repo and turn on
@@ -74,30 +92,34 @@ func Setup(buildDir, repo string) error {
 		}
 		return gitclient.Init(buildDir)
 	}
-	if err := CheckRepo(repo); err != nil {
-		return err
-	}
-	if gitclient.IsRepo(buildDir) {
-		if err := gitclient.SetRemote(buildDir, repo); err != nil {
+	return utils.Step("Linking to "+PagesURL(repo)+". One second...", func() error {
+		if err := CheckRepo(repo); err != nil {
 			return err
 		}
-		// The build is regenerated each time, so its own history can give
-		// way to the repo's, keeping pushes from being rejected.
-		if branch := gitclient.RemoteBranch(buildDir); branch != "" {
-			return gitclient.ResetOnto(buildDir, branch)
+		if gitclient.IsRepo(buildDir) {
+			if err := gitclient.SetRemote(buildDir, repo); err != nil {
+				return err
+			}
+			// The build is regenerated each time, so its own history can give
+			// way to the repo's, keeping pushes from being rejected.
+			if branch := gitclient.RemoteBranch(buildDir); branch != "" {
+				return gitclient.ResetOnto(buildDir, branch)
+			}
+			return nil
 		}
-		return nil
-	}
-	if err := os.RemoveAll(buildDir); err != nil {
-		return fmt.Errorf("failed to remove %s: %w", buildDir, err)
-	}
-	return gitclient.Clone(repo, buildDir)
+		if err := os.RemoveAll(buildDir); err != nil {
+			return fmt.Errorf("failed to remove %s: %w", buildDir, err)
+		}
+		return gitclient.Clone(repo, buildDir)
+	})
 }
 
 // Push commits everything in buildDir and pushes it to its repo.
 func Push(buildDir string) error {
-	if err := gitclient.CommitAll(buildDir, "Deploy "+time.Now().Format("2006-01-02 15:04")); err != nil {
-		return err
-	}
-	return gitclient.Push(buildDir)
+	return utils.Step("Deploying to "+gitclient.Remote(buildDir)+". Shouldn't take long...", func() error {
+		if err := gitclient.CommitAll(buildDir, "Deploy "+time.Now().Format("2006-01-02 15:04")); err != nil {
+			return err
+		}
+		return gitclient.Push(buildDir)
+	})
 }

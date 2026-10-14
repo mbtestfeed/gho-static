@@ -1,0 +1,31 @@
+/* Right of the content on wider screens, between 150px and 300px wide. */
+#recent-blogs {
+    display: none;
+    padding: 15px;
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--banner-color) 50%, transparent);
+}
+
+@media (min-width: 801px) {
+    #recent-blogs {
+        display: block;
+        grid-column: 3;
+        grid-row: 1;
+        justify-self: start;
+        width: min(300px, 100% - 40px);
+        min-width: 150px;
+        margin: calc(70px + 30px) 0 30px 20px;
+    }
+}
+
+.recent-links {
+    list-style: none;
+}
+
+.recent-links li + li {
+    margin-top: 10px;
+}
+
+.recent-date {
+    opacity: 0.6;
+}

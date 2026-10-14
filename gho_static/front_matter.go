@@ -8,11 +8,13 @@ import (
 // FrontMatter is the YAML-style metadata block at the top of a markdown page.
 type FrontMatter struct {
 	Title     string
+	Summary   string // the page's meta description
 	Author    string
 	Published string
 	Edited    string
 	Draft     bool
-	TOC       bool // add a table of contents to the top of the page
+	TOC       bool     // add a table of contents to the top of the page
+	Tags      []string // as [a, b], a, b or "- a" lines beneath
 }
 
 // parseFrontMatter splits a leading "---" delimited block of "key: value"
@@ -30,7 +32,13 @@ func parseFrontMatter(md []byte) (FrontMatter, []byte) {
 	}
 	header, body := s[4:4+end], s[4+end+len("\n---"):]
 
+	inTags := false // whether "- tag" lines follow a tags key
 	for _, line := range strings.Split(header, "\n") {
+		if item, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok && inTags {
+			fm.Tags = append(fm.Tags, parseList(item)...)
+			continue
+		}
+		inTags = false
 		key, val, ok := strings.Cut(line, ":")
 		if !ok {
 			continue
@@ -39,6 +47,10 @@ func parseFrontMatter(md []byte) (FrontMatter, []byte) {
 		switch strings.TrimSpace(key) {
 		case "title":
 			fm.Title = val
+		case "summary":
+			fm.Summary = val
+		case "tags":
+			fm.Tags, inTags = parseList(val), true
 		case "author":
 			fm.Author = val
 		case "published":
@@ -52,6 +64,18 @@ func parseFrontMatter(md []byte) (FrontMatter, []byte) {
 		}
 	}
 	return fm, []byte(strings.TrimLeft(body, "\n"))
+}
+
+// parseList splits a YAML flow list ([a, b]) or comma separated values into
+// its items, unquoted and without blanks.
+func parseList(s string) []string {
+	var items []string
+	for _, item := range strings.Split(strings.Trim(strings.TrimSpace(s), "[]"), ",") {
+		if item = strings.Trim(strings.TrimSpace(item), `"'`); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // parseDate parses a YAML date or datetime, in local time unless it has an

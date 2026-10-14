@@ -46,7 +46,8 @@
 .header-nav {
     align-self: stretch;
     margin-right: -20px;
-    border-left: 1px solid var(--banner-text-color);
+    /* The banner colour under the 12% black of the open menu's overlay. */
+    border-left: 1px solid color-mix(in srgb, var(--banner-color) 88%, black);
 }
 
 /* Padding centres the 24x18 icon in the clickable area. */
@@ -126,16 +127,14 @@
     right: 0;
     min-width: 400px;
     max-width: calc(100vw - 100px);
-    border-top: 1px solid var(--banner-text-color);
+    border-top: 1px solid color-mix(in srgb, var(--banner-color) 88%, black);
+    border-bottom-left-radius: 10px;
     overflow: hidden;
 }
 
 .header-nav ul {
     list-style: none;
     background-color: var(--banner-color);
-    border: 1px solid var(--banner-text-color);
-    border-top: none;
-    border-right: none;
     /* Hidden just above the bottom of the header until opened. */
     transform: translateY(-100%);
     transition: transform 0.3s;

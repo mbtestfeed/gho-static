@@ -1,0 +1,16 @@
+{{- with .Site.IntroImage}}
+<img class="intro-image" src="{{$.Root}}{{.}}" alt="">
+{{- end}}
+{{- with .Site.IntroName}}
+<h2 class="intro-name">{{.}}</h2>
+{{- end}}
+{{- with .Site.IntroDescription}}
+<p class="intro-description">{{.}}</p>
+{{- end}}
+{{- with .Site.SocialLinks}}
+<ul class="social-links">
+{{- range .}}
+    <li><a href="{{.Href}}">{{.Name}}</a></li>
+{{- end}}
+</ul>
+{{- end}}

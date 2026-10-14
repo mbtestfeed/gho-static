@@ -1,6 +1,7 @@
 package gho_static
 
 import (
+	"crypto/rand"
 	"fmt"
 	"html/template"
 	"os"
@@ -34,12 +35,34 @@ type NavLink struct {
 type Site struct {
 	Title    string
 	Home     string // link to the home page, relative to the build folder
+	Version  string // random UUID identifying this build
 	Logo     string // logo image, relative to the build folder, or empty if none
 	Favicon  string // favicon image, relative to the build folder, or empty if none
 	NavLinks []NavLink
+
+	IntroImage       string // relative to the build folder
+	IntroName        string
+	IntroDescription string
+	SocialLinks      []SocialLink // only those with a URL
+	RecentBlogs      []SubPage    // the most recently published listed pages
 }
 
-// Page is the data index.html, header.html and footer.html are executed with.
+// VersionComment returns an HTML comment naming the build version. It's
+// given as HTML, since html/template drops comments written in templates.
+func (s *Site) VersionComment() template.HTML {
+	return template.HTML("<!-- Build version: " + s.Version + " -->")
+}
+
+// newVersion returns a random (version 4) UUID.
+func newVersion() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// Page is the data index.html and the structure templates are executed with.
 type Page struct {
 	Site    *Site
 	Root    string // relative path from the page to the build folder
@@ -47,11 +70,15 @@ type Page struct {
 	Header   template.HTML
 	Content  template.HTML
 	Footer   template.HTML
+	IntroSidebar template.HTML // empty if the site has no intro sidebar template
+	RecentBlogs  template.HTML // empty if the site has no recent blogs template
 	Styles   []string
 	Scripts  []string
 	SubPages []SubPage // only set for content .html templates
 	Previous *SubPage  // older sibling, for markdown pages listed by a template page
 	Next     *SubPage  // newer sibling, for markdown pages listed by a template page
+	Tags     []Tag     // every tag on the site's built pages
+	Tag      *Tag      // only set when the tags template page is rendered as this tag's page
 }
 
 // Attribution is the footer's link back to the gho-static project.
@@ -148,6 +175,22 @@ func writePage(tmpl *template.Template, page Page, out string, assets []string) 
 		footer += Attribution + "\n"
 	}
 	page.Header, page.Footer = toDiv([]byte(header)), toDiv([]byte(footer))
+	for _, s := range []struct {
+		name string
+		html *template.HTML
+	}{
+		{"intro-sidebar.html", &page.IntroSidebar},
+		{"recent-blogs.html", &page.RecentBlogs},
+	} {
+		if tmpl.Lookup(s.name) == nil {
+			continue
+		}
+		sidebar, err := render(tmpl, s.name, page)
+		if err != nil {
+			return err
+		}
+		*s.html = toDiv([]byte(sidebar))
+	}
 
 	html, err := render(tmpl, "index.html", page)
 	if err != nil {
@@ -234,6 +277,36 @@ func folderStatus(dir string) (draft, unreleased bool, err error) {
 	return draft, unreleased, nil
 }
 
+// warning and reset are terminal escape codes to start yellow on black
+// warning text, and return to normal text.
+const warning, reset = "\033[33;40m", "\033[0m"
+
+// warnUnpublished prints a warning for each markdown page directly in dir
+// that's a draft or has a publish date in the future, so isn't published.
+func warnUnpublished(dir *file_access.ContentDir) error {
+	for _, f := range dir.Files {
+		if !strings.EqualFold(filepath.Ext(f), ".md") {
+			continue
+		}
+		mdBytes, err := os.ReadFile(f)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", f, err)
+		}
+		meta, _ := parseFrontMatter(mdBytes)
+		var reasons []string
+		if meta.Draft {
+			reasons = append(reasons, "is a draft")
+		}
+		if meta.Unreleased() {
+			reasons = append(reasons, "has a publish date in the future ("+meta.ReleaseLine()+")")
+		}
+		if len(reasons) > 0 {
+			fmt.Fprintf(os.Stderr, "%swarning: %s %s, so it wasn't published%s\n", warning, f, strings.Join(reasons, " and "), reset)
+		}
+	}
+	return nil
+}
+
 // buildContent writes each .md file in dir (and its subfolders) as a page in
 // the matching build subfolder, copying same-folder css/js into the matching
 // static subfolder and linking them, after shared, in the page's head. A
@@ -265,6 +338,11 @@ func buildContent(dir *file_access.ContentDir, root string, tmpl *template.Templ
 		return err
 	}
 	skip := opts.skip(draft, unreleased)
+	if skip && opts.Publish {
+		if err := warnUnpublished(dir); err != nil {
+			return err
+		}
+	}
 	if listed && opts.Publish && !skip {
 		undated, err := undatedPage(dir)
 		if err != nil {
@@ -329,12 +407,50 @@ func buildContent(dir *file_access.ContentDir, root string, tmpl *template.Templ
 		if err != nil {
 			return err
 		}
+		if rel == tagsDir && strings.EqualFold(filepath.Base(f), tagsDir+".html") {
+			if err := writeTagPages(tmpl, layout, f, buildDir, pageAssets); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-// Build generates the site from srcDir into outDir.
-func Build(srcDir, outDir string, opts Options) error {
+// fileExists reports whether path exists.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// writeTagPages renders the tags template page at tmplPath again for each of
+// layout's tags, as that tag's own page listing the pages that have it.
+func writeTagPages(tmpl *template.Template, layout Page, tmplPath, buildDir string, assets []string) error {
+	for _, tag := range layout.Tags {
+		out := filepath.Join(buildDir, filepath.FromSlash(tag.file))
+		if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
+			return fmt.Errorf("failed to create %s: %w", filepath.Dir(out), err)
+		}
+		page := layout
+		page.Root, page.Tag = rootFor(tag.file), &tag
+		if err := writeTemplatePage(tmpl, page, nil, tmplPath, out, assets); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Build generates the site from srcDir into outDir, returning its build
+// version.
+func Build(srcDir, outDir string, opts Options) (string, error) {
+	version := newVersion()
+	if err := buildSite(srcDir, outDir, opts, version); err != nil {
+		return "", err
+	}
+	return version, nil
+}
+
+// buildSite generates the site from srcDir into outDir, marked with version.
+func buildSite(srcDir, outDir string, opts Options, version string) error {
 	if outDir == "" {
 		outDir = "."
 	}
@@ -358,11 +474,30 @@ func Build(srcDir, outDir string, opts Options) error {
 		return err
 	}
 
-	tmpl, err := template.ParseFiles(
+	prefs, err := ReadPreferences(filepath.Join(srcDir, "preferences.yaml"))
+	if err != nil {
+		return err
+	}
+
+	templates := []string{
 		filepath.Join(srcDir, "index.html"),
 		filepath.Join(srcDir, "structure", "header", "header.html"),
 		filepath.Join(srcDir, "structure", "footer", "footer.html"),
-	)
+	}
+	// The sidebars are optional, so sites made before them still build, and
+	// can be turned off in preferences.
+	for _, s := range []struct {
+		name string
+		show bool
+	}{
+		{"intro-sidebar", prefs.ShowIntroSidebar},
+		{"recent-blogs", prefs.ShowRecentBlogsSidebar},
+	} {
+		if path := filepath.Join(srcDir, "structure", s.name, s.name+".html"); s.show && fileExists(path) {
+			templates = append(templates, path)
+		}
+	}
+	tmpl, err := template.ParseFiles(templates...)
 	if err != nil {
 		return fmt.Errorf("failed to parse templates: %w", err)
 	}
@@ -371,11 +506,8 @@ func Build(srcDir, outDir string, opts Options) error {
 		{ID: "content", Path: "./index.md"},
 		{ID: "header", Path: "./structure/header/header.html"},
 		{ID: "footer", Path: "./structure/footer/footer.html"},
-	}
-
-	prefs, err := readPreferences(filepath.Join(srcDir, "preferences.yaml"))
-	if err != nil {
-		return err
+		{ID: "intro-sidebar", Path: "./structure/intro-sidebar/intro-sidebar.html"},
+		{ID: "recent-blogs", Path: "./structure/recent-blogs/recent-blogs.html"},
 	}
 
 	var navLinks []NavLink
@@ -411,11 +543,23 @@ func Build(srcDir, outDir string, opts Options) error {
 		Site: &Site{
 			Title:    prefs.SiteName,
 			Home:     home,
+			Version:  version,
 			Logo:     prefs.Logo,
 			Favicon:  prefs.Favicon,
 			NavLinks: navLinks,
+
+			IntroImage:       prefs.IntroSidebarImage,
+			IntroName:        prefs.IntroName,
+			IntroDescription: prefs.IntroDescription,
+			SocialLinks:      prefs.SocialLinks.populated(),
 		},
 		Root: rootFor("index.html"),
+	}
+	if layout.Tags, err = collectTags(content, opts); err != nil {
+		return err
+	}
+	if layout.Site.RecentBlogs, err = recentPages(content, opts, 3); err != nil {
+		return err
 	}
 
 	// Clear the previous build, keeping any git repo it was published from.
