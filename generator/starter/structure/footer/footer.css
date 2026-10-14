@@ -1,0 +1,39 @@
+body {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+}
+
+#footer {
+    width: 100%;
+    min-height: 70px;
+    margin-top: auto;
+    background-color: var(--banner-color);
+    color: var(--banner-text-color);
+}
+
+#footer a,
+#footer a:visited {
+    color: var(--banner-text-color);
+}
+
+.footer-inner {
+    display: flex;
+    justify-content: space-between;
+    margin: 25px;
+}
+
+#gho-static {
+    font-weight: bold;
+}
+
+@media (max-width: 800px) {
+    .footer-inner {
+        flex-direction: column;
+    }
+
+    #gho-static {
+        order: 1;
+    }
+}

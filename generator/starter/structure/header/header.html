@@ -1,0 +1,17 @@
+<a class="header-title" href="{{.Root}}{{.Site.Home}}">
+    {{- if .Site.Logo}}<img class="header-logo" src="{{.Root}}{{.Site.Logo}}" alt="">{{end -}}
+    {{.Site.Title -}}
+</a>
+<details class="header-nav">
+    <summary aria-label="Menu"><span></span><span></span><span></span></summary>
+    <div class="header-menu">
+    <ul>
+    {{- range .Site.NavLinks}}
+        <li><a href="{{$.Root}}{{.Link}}">{{.Name}}
+            {{- if .Draft}} <span class="nav-flag">D</span>{{end}}
+            {{- if .Unreleased}} <span class="nav-flag">U</span>{{end -}}
+        </a></li>
+    {{- end}}
+    </ul>
+    </div>
+</details>

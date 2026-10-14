@@ -1,0 +1,102 @@
+package cli
+
+import (
+	"bufio"
+	"fmt"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"gho-static/gho_static"
+)
+
+// ask prints prompt with hints in grey on the lines beneath it, reads a line
+// of input typed after the prompt and returns it trimmed.
+func ask(r *bufio.Reader, prompt string, hints []string) string {
+	fmt.Print(prompt + "\n")
+	for _, h := range hints {
+		fmt.Println(Grey + h + Reset)
+	}
+	// Move back up to the end of the prompt line for the input.
+	fmt.Printf("\033[%dA\r\033[%dC", len(hints)+1, len(prompt))
+	answer, _ := r.ReadString('\n')
+	// Enter leaves the cursor on the first hint line; move below them all.
+	fmt.Printf("\033[%dB", len(hints))
+	return strings.TrimSpace(answer)
+}
+
+// AskDate asks for a published date for the undated page at mdPath,
+// defaulting to today, until a valid yyyymmdd date is given.
+func AskDate(r *bufio.Reader, mdPath string) time.Time {
+	today := time.Now()
+	for {
+		answer := ask(r, mdPath+" has no published date. Enter one as yyyymmdd: ", []string{"press enter to use today's date: " + today.Format("20060102")})
+		if answer == "" {
+			return today
+		}
+		if date, err := time.ParseInLocation("20060102", answer, time.Local); err == nil {
+			return date
+		}
+		fmt.Println(Red + answer + " isn't a valid date in yyyymmdd format." + Reset)
+	}
+}
+
+// askDeploymentMethod asks how the build folder will be published.
+func askDeploymentMethod(r *bufio.Reader) DeploymentMethod {
+	for {
+		switch strings.ToLower(ask(r, "How will you deploy the site? ", []string{"1: GitHub Pages", "2: none (default)"})) {
+		case "", "2", "none":
+			return NoMethod
+		case "1", "github pages":
+			return GitHubPages
+		}
+	}
+}
+
+// askRepo asks for the GitHub repo to push the build folder to.
+func askRepo(r *bufio.Reader) string {
+	return ask(r, "GitHub repo URL: ", []string{"e.g. https://github.com/<user>/<user>.github.io.git, or press enter to add it later"})
+}
+
+// askPreferences asks whether to use the default preferences and, if not,
+// asks for each value in turn, keeping the default for any left blank.
+func askPreferences(r *bufio.Reader) gho_static.Preferences {
+	prefs := gho_static.DefaultPreferences
+	defaults, _ := yaml.Marshal(prefs)
+	hints := strings.Split(strings.TrimRight(string(defaults), "\n"), "\n")
+	for {
+		switch strings.ToLower(ask(r, "Do you want to use the default values? Y/N (You can change these later in preferences.yaml) ", hints)) {
+		case "", "y", "yes":
+			return prefs
+		case "n", "no":
+			for _, f := range []struct {
+				name string
+				val  *string
+			}{
+				{"site_name", &prefs.SiteName},
+				{"nav_links", &prefs.NavLinks},
+				{"banner_color (light)", &prefs.BannerColor.Light},
+				{"banner_color (dark)", &prefs.BannerColor.Dark},
+				{"banner_text_color (light)", &prefs.BannerTextColor.Light},
+				{"banner_text_color (dark)", &prefs.BannerTextColor.Dark},
+				{"background_color (light)", &prefs.BackgroundColor.Light},
+				{"background_color (dark)", &prefs.BackgroundColor.Dark},
+				{"text_color (light)", &prefs.TextColor.Light},
+				{"text_color (dark)", &prefs.TextColor.Dark},
+				{"link (light)", &prefs.Link.Light},
+				{"link (dark)", &prefs.Link.Dark},
+				{"link_clicked (light)", &prefs.LinkClicked.Light},
+				{"link_clicked (dark)", &prefs.LinkClicked.Dark},
+				{"font", &prefs.Font},
+				{"logo", &prefs.Logo},
+				{"favicon", &prefs.Favicon},
+			} {
+				if v := ask(r, f.name+": ", []string{"press enter to accept default value: " + *f.val}); v != "" {
+					*f.val = v
+				}
+			}
+			return prefs
+		}
+	}
+}

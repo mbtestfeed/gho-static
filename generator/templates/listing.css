@@ -1,0 +1,23 @@
+.blog-links {
+    list-style: none;
+}
+
+.blog-links li {
+    margin-bottom: 20px;
+}
+
+.blog-date {
+    opacity: 0.6;
+}
+
+.blog-links .warnings {
+    margin-bottom: 0;
+}
+
+.blog-links .warning-unreleased {
+    font-size: 1em;
+}
+
+.blog-links .warning-draft {
+    font-size: calc(1em + 2px);
+}

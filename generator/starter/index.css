@@ -1,0 +1,115 @@
+/* Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* The templated values below are filled in from preferences.yaml at build
+   time. Change them there rather than here. */
+:root {
+    --banner-color: {{.BannerColor.Light}};
+    --banner-text-color: {{.BannerTextColor.Light}};
+    --background-color: {{.BackgroundColor.Light}};
+    --text-color: {{.TextColor.Light}};
+    --link-color: {{.Link.Light}};
+    --link-clicked-color: {{.LinkClicked.Light}};
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --banner-color: {{.BannerColor.Dark}};
+        --banner-text-color: {{.BannerTextColor.Dark}};
+        --background-color: {{.BackgroundColor.Dark}};
+        --text-color: {{.TextColor.Dark}};
+        --link-color: {{.Link.Dark}};
+        --link-clicked-color: {{.LinkClicked.Dark}};
+    }
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    font-family: {{.Font}};
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--link-color);
+}
+
+a:visited {
+    color: var(--link-clicked-color);
+}
+
+img, picture, video, canvas, svg {
+    display: block;
+    max-width: 100%;
+}
+
+input, button, textarea, select {
+    font: inherit;
+}
+
+p, h1, h2, h3, h4, h5, h6 {
+    overflow-wrap: break-word;
+}
+
+#content {
+    width: 60%;
+    max-width: 1500px;
+    margin: calc(70px + 30px) auto 30px;
+}
+
+#content p + p {
+    margin-top: 1em;
+}
+
+.byline {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    opacity: 0.6;
+}
+
+.byline-date {
+    margin-left: auto;
+}
+
+.warnings {
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    margin-bottom: 20px;
+    color: red;
+}
+
+.warning-draft {
+    font-size: 42px;
+}
+
+.warning-unreleased {
+    font-size: 30px;
+}
+
+.pager {
+    display: flex;
+    justify-content: space-between;
+    margin: 20px 0;
+}
+
+.pager-next {
+    margin-left: auto;
+}
+
+@media (max-width: 800px) {
+    #content {
+        width: auto;
+        margin: calc(70px + 30px) 15px 30px;
+    }
+}

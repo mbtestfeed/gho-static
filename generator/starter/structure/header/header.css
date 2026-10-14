@@ -1,0 +1,183 @@
+#header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    width: 100%;
+    height: 70px;
+    color: var(--banner-text-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+}
+
+/* The header background is a layer of its own, so the menu can slide in
+   underneath it. */
+#header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--banner-color);
+}
+
+#header a,
+#header a:visited {
+    color: var(--banner-text-color);
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.header-logo {
+    max-height: 64px;
+    width: auto;
+}
+
+/* Full header height, out to the right edge, so the whole section is
+   clickable. */
+.header-nav {
+    align-self: stretch;
+    margin-right: -20px;
+    border-left: 1px solid var(--banner-text-color);
+}
+
+/* Padding centres the 24x18 icon in the clickable area. */
+.header-nav summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 64px;
+    height: 100%;
+    padding: 26px 20px;
+}
+
+.header-nav summary span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background-color: currentColor;
+    transition: transform 0.3s, width 0.3s;
+}
+
+.header-nav[open] summary span:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.header-nav[open] summary span:nth-child(2) {
+    width: 0;
+}
+
+.header-nav[open] summary span:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}
+
+/* Dimmed layers inside summary, so clicking anywhere outside the menu
+   toggles it closed. ::before covers the page beneath the header and menu,
+   ::after covers the header up to the menu button (64px plus its 1px
+   border). They fade with the menu, hidden (and so unclickable) once faded
+   out. */
+.header-nav summary::before,
+.header-nav summary::after {
+    content: "";
+    position: fixed;
+    visibility: hidden;
+    background-color: transparent;
+    cursor: default;
+    transition: background-color 0.3s, visibility 0.3s;
+}
+
+.header-nav[open] summary::before,
+.header-nav[open] summary::after {
+    visibility: visible;
+    background-color: rgba(0, 0, 0, 0.12);
+}
+
+.header-nav summary::before {
+    inset: 0;
+    z-index: -3;
+}
+
+.header-nav summary::after {
+    top: 0;
+    left: 0;
+    right: 65px;
+    height: 70px;
+    z-index: 0;
+}
+
+/* Stays at the menu's final position, drawing the line along its top while
+   the menu slides in and out. overflow clips to inside the border, so the
+   sliding menu never covers the line. */
+.header-menu {
+    position: absolute;
+    z-index: -2;
+    top: 100%;
+    right: 0;
+    min-width: 400px;
+    max-width: calc(100vw - 100px);
+    border-top: 1px solid var(--banner-text-color);
+    overflow: hidden;
+}
+
+.header-nav ul {
+    list-style: none;
+    background-color: var(--banner-color);
+    border: 1px solid var(--banner-text-color);
+    border-top: none;
+    border-right: none;
+    /* Hidden just above the bottom of the header until opened. */
+    transform: translateY(-100%);
+    transition: transform 0.3s;
+}
+
+.header-nav[open] ul {
+    transform: none;
+}
+
+@starting-style {
+    .header-nav[open] ul {
+        transform: translateY(-100%);
+    }
+}
+
+/* Keep the menu shown while it slides out after closing. */
+.header-nav::details-content {
+    transition: content-visibility 0.3s allow-discrete;
+}
+
+@media (max-width: 800px) {
+    .header-menu {
+        min-width: 0;
+        width: calc(100vw - 100px);
+    }
+}
+
+.header-nav a {
+    display: block;
+    width: 100%;
+    padding: 10px 15px;
+    text-align: right;
+    color: inherit;
+    text-decoration: none;
+}
+
+.nav-flag {
+    color: red;
+    font-weight: bold;
+}
+
+.header-nav a:hover,
+.header-nav a:focus {
+    background-color: rgba(173, 216, 230, 0.2);
+}

@@ -1,0 +1,21 @@
+<h1>%s</h1>
+<ul class="blog-links">
+{{- range .SubPages}}
+    <li>
+        <a href="{{$.Root}}{{.Link}}">{{.Title}}</a>
+        {{- with .Published}}
+        <div class="blog-date">Published on {{.}}</div>
+        {{- end}}
+        {{- if or .Draft .Unreleased}}
+        <div class="warnings">
+        {{- if .Draft}}
+            <span class="warning-draft">DRAFT</span>
+        {{- end}}
+        {{- if .Unreleased}}
+            <span class="warning-unreleased">UNRELEASED UNTIL: {{.Published}}</span>
+        {{- end}}
+        </div>
+        {{- end}}
+    </li>
+{{- end}}
+</ul>

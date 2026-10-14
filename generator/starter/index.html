@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{if and .Meta.Title (ne .Meta.Title .Site.Title)}}{{.Meta.Title}} - {{end}}{{.Site.Title}}</title>
+{{- with .Site.Favicon}}
+    <link rel="icon" href="{{$.Root}}{{.}}" sizes="any">
+{{- end}}
+{{- range .Styles}}
+    <link rel="stylesheet" href="{{.}}">
+{{- end}}
+{{- range .Scripts}}
+    <script src="{{.}}" defer></script>
+{{- end}}
+</head>
+<body>
+    <div id="header">{{.Header}}</div>
+    <div id="content">
+    {{- if or .Meta.Author .Meta.DateLine}}
+        <div class="byline">
+        {{- with .Meta.Author}}
+            <span class="byline-author">{{.}}</span>
+        {{- end}}
+        {{- with .Meta.DateLine}}
+            <span class="byline-date">{{.}}</span>
+        {{- end}}
+        </div>
+    {{- end}}
+    {{- if or .Meta.Draft .Meta.Unreleased}}
+        <div class="warnings">
+        {{- if .Meta.Draft}}
+            <span class="warning-draft">DRAFT</span>
+        {{- end}}
+        {{- if .Meta.Unreleased}}
+            <span class="warning-unreleased">UNRELEASED UNTIL: {{.Meta.ReleaseLine}}</span>
+        {{- end}}
+        </div>
+    {{- end}}{{template "pager" .}}{{.Content}}{{template "pager" .}}</div>
+    <div id="footer">{{.Footer}}</div>
+</body>
+</html>
+{{define "pager"}}
+    {{- if or .Previous .Next}}
+        <div class="pager">
+        {{- with .Previous}}
+            <a class="pager-prev" href="{{$.Root}}{{.Link}}">&larr; {{.Title}}</a>
+        {{- end}}
+        {{- with .Next}}
+            <a class="pager-next" href="{{$.Root}}{{.Link}}">{{.Title}} &rarr;</a>
+        {{- end}}
+        </div>
+    {{- end}}
+{{- end -}}
