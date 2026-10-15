@@ -32,8 +32,8 @@ var listingPageTemplate string
 //go:embed templates/listing.css
 var listingCSS string
 
-// contentPageTemplate is a generic content page or post, filled with its
-// title, published date and draft status.
+// contentPageTemplate is a generic content page or post's front matter,
+// filled with its title, published date and draft status.
 //
 //go:embed templates/content.md
 var contentPageTemplate string
@@ -54,16 +54,27 @@ func titleFor(name string) string {
 }
 
 // pageMeta is the front matter of a generated page, other than its title
-// and published date. Unset author and edited lines are left out.
+// and published date. Unset author and edited lines are left out. Clean
+// pages have only front matter, without a heading.
 type pageMeta struct {
 	summary, author, edited string
-	draft, toc              bool
+	draft, toc, clean       bool
 	tags                    []string
 }
 
 // contentPage returns the contents of a generic page or post titled after
 // name, published on date, with meta.
 func contentPage(name string, date time.Time, meta pageMeta) string {
+	page := frontMatter(name, date, meta)
+	if !meta.clean {
+		page += "\n# " + titleFor(name) + "\n"
+	}
+	return page
+}
+
+// frontMatter returns the front matter of a generic page or post titled
+// after name, published on date, with meta.
+func frontMatter(name string, date time.Time, meta pageMeta) string {
 	line := func(key, val string) string {
 		if val == "" {
 			return ""
@@ -86,6 +97,9 @@ var examplePosts = []pageMeta{
 	{summary: "The third example post, without tags."},
 }
 
+// cleanIndexText is a clean site's home page body.
+const cleanIndexText = "You've built a static website in 'Clean' mode. There's nothing here - you're going to need to fill this out. Update your basic preferences in preferences.yaml, and add new pages using <code>gho-static --generate content/[new_page_name]</code> or new blogs using <code>gho-static --generate content/blogs/[my_new_blog_title]</code>. Please refer to mbtestfeed.github.io for additional documentation.\n"
+
 // listingPage returns the contents of a post listing page titled after name.
 func listingPage(name string) string {
 	return fmt.Sprintf(listingPageTemplate, titleFor(name))
@@ -99,8 +113,9 @@ func PostFolder(name string, date time.Time) string {
 // Generate writes a starter site with the given preferences into dir, with
 // images copied into static/img, refusing to overwrite existing files. A
 // logo or favicon other than the default is copied from its path into
-// static/img too.
-func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
+// static/img too. A clean site has a single empty post instead of the
+// examples, and its pages have only front matter.
+func Generate(dir string, prefs gho_static.Preferences, images fs.FS, clean bool) error {
 	files := map[string]string{}
 	starterFiles, _ := fs.Sub(starter, "starter")
 	if err := addFiles(files, starterFiles, ""); err != nil {
@@ -118,7 +133,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
 		{"favicon", &prefs.Favicon, gho_static.DefaultPreferences.Favicon},
 		{"intro sidebar image", &prefs.IntroSidebarImage, gho_static.DefaultPreferences.IntroSidebarImage},
 	} {
-		if *img.path == img.defaultVal {
+		if *img.path == "" || *img.path == img.defaultVal {
 			continue
 		}
 		if !slices.Contains(gho_static.ImageExts, strings.ToLower(filepath.Ext(*img.path))) {
@@ -140,6 +155,15 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
 	}
 	now := time.Now()
 	files["preferences.yaml"] = string(prefsYAML)
+	if clean {
+		files["index.md"] = "---\ntitle:\n---\n\n" + cleanIndexText
+		for _, name := range []string{"about", "contact"} {
+			addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
+		}
+		addPage(files, "content/blogs/"+PostFolder("first_post", now)+"/post", ".md", contentPage("first_post", now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
+		addPage(files, "content/blogs/blogs", ".html", listingPage("blogs"), listingCSS)
+		return writeFiles(dir, files)
+	}
 	// Example pages use every front matter field, so they show what's possible.
 	author := prefs.DefaultAuthor
 	if author == "" {
@@ -161,21 +185,23 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS) error {
 }
 
 // GeneratePage creates the folder dir and writes a draft content page into
-// it, named and titled after the folder, by author if set.
-func GeneratePage(dir, author string) error {
+// it, named and titled after the folder, by author if set. A clean page has
+// only front matter.
+func GeneratePage(dir, author string, clean bool) error {
 	if err := newFolder(dir); err != nil {
 		return err
 	}
 	name := filepath.Base(dir)
 	files := map[string]string{}
-	addPage(files, name, ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true}), "")
+	addPage(files, name, ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true, clean: clean}), "")
 	return writeFiles(dir, files)
 }
 
 // GeneratePost creates the folder dir and writes a draft post.md for post
 // name, published today, by author if set, into it. If dir's parent folder
-// doesn't exist, it is created with a listing page named after it.
-func GeneratePost(dir, name, author string) error {
+// doesn't exist, it is created with a listing page named after it. A clean
+// post has only front matter.
+func GeneratePost(dir, name, author string, clean bool) error {
 	parent := filepath.Dir(dir)
 	files := map[string]string{}
 	if _, err := os.Stat(parent); os.IsNotExist(err) {
@@ -185,7 +211,7 @@ func GeneratePost(dir, name, author string) error {
 	if err := newFolder(dir); err != nil {
 		return err
 	}
-	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true}), "")
+	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true, clean: clean}), "")
 	return writeFiles(parent, files)
 }
 

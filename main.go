@@ -116,16 +116,16 @@ func main() {
 			fail(err)
 		}
 		images, _ := fs.Sub(img, "img")
-		err = generator.Generate(cmd.GenPath, cmd.Prefs, images)
+		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, cmd.Clean)
 	case cli.GeneratePage, cli.GeneratePost:
 		var prefs gho_static.Preferences
 		if prefs, err = gho_static.ReadPreferences(prefsPath); err != nil {
 			break
 		}
 		if cmd.Mode == cli.GeneratePage {
-			err = generator.GeneratePage(cmd.GenPath, prefs.DefaultAuthor)
+			err = generator.GeneratePage(cmd.GenPath, prefs.DefaultAuthor, cmd.Clean)
 		} else {
-			err = generator.GeneratePost(cmd.GenPath, cmd.PostName, prefs.DefaultAuthor)
+			err = generator.GeneratePost(cmd.GenPath, cmd.PostName, prefs.DefaultAuthor, cmd.Clean)
 		}
 	case cli.SetupDeployment:
 		err = deployment.Setup(filepath.Join(cmd.Site, "build"), cmd.Method, cmd.Repo)
@@ -179,7 +179,11 @@ func main() {
 		}
 		fmt.Print(cli.Grey + cli.Usage + cli.Reset + "\n")
 		printVersion(version)
-		fmt.Printf("Congrats! You now have a default static site demo, built locally. You can view what this looks like at:\n    %s\n", cli.Link+fileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+cli.Reset)
+		kind := "default static site demo"
+		if cmd.Clean {
+			kind = "clean static site"
+		}
+		fmt.Printf("Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, cli.Link+fileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+cli.Reset)
 		return
 	}
 

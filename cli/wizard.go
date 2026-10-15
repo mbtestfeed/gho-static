@@ -90,10 +90,9 @@ func askRepo(r *bufio.Reader) string {
 	return github_pages.RepoURL(user)
 }
 
-// askPreferences asks whether to use the default preferences and, if not,
-// asks for each value in turn, keeping the default for any left blank.
-func askPreferences(r *bufio.Reader) gho_static.Preferences {
-	prefs := gho_static.DefaultPreferences
+// askPreferences asks whether to use prefs as the defaults and, if not, asks
+// for each value in turn, keeping the default for any left blank.
+func askPreferences(r *bufio.Reader, prefs gho_static.Preferences) gho_static.Preferences {
 	defaults, _ := yaml.Marshal(prefs)
 	hints := strings.Split(strings.TrimRight(string(defaults), "\n"), "\n")
 	for {

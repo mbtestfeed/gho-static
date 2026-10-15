@@ -6,5 +6,3 @@ summary:%[2]s
 toc: %[7]t
 tags: [%[8]s]
 ---
-
-# %[1]s

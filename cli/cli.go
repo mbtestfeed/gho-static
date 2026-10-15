@@ -33,6 +33,10 @@ Flags:
                           <site folder>, e.g. gho-static --generate content/news mysite
                           Builds afterwards with drafts and unreleased pages
                           included (-d -u).
+  -c, --clean             With -g, generate markdown files with only their front
+                          matter. A new site is named after its folder, with
+                          one empty post instead of the example posts, and no
+                          intro sidebar image, name or links.
   -d, --build-drafts      Also build pages whose folder contains a markdown file
                           marked "draft: true" (shown with a DRAFT warning).
   -u, --build-unreleased  Also build pages whose published date is in the future
@@ -84,6 +88,7 @@ type Command struct {
 	PostName string // only set for GeneratePost
 	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
 	Yes      bool   // answer yes to every question (--yes)
+	Clean    bool   // generate without example content (--clean)
 	Options  gho_static.Options
 	Prefs    gho_static.Preferences // only set for GenerateSite
 	Method   deployment.Method      // only set for GenerateSite, SetupDeployment and Deploy
@@ -124,6 +129,8 @@ func Parse(args []string) (Command, error) {
 			cmd.Options.Publish = true
 		case "y", "yes":
 			useDefaults = true
+		case "c", "clean":
+			cmd.Clean = true
 		case "deploy":
 			deploying = true
 		case "drafts":
@@ -205,11 +212,21 @@ func Parse(args []string) (Command, error) {
 		}
 		cmd.Mode = GenerateSite
 		r := bufio.NewReader(os.Stdin)
+		cmd.Prefs = gho_static.DefaultPreferences
+		if cmd.Clean {
+			cmd.Prefs.SiteName = filepath.Base(filepath.Clean(cmd.GenPath))
+			cmd.Prefs.IntroSidebarImage, cmd.Prefs.IntroName = "", ""
+			cmd.Prefs.IntroDescription = "This is a blank slate, created using Gho-Static"
+			// Keep the link names, blanked, so they're easy to fill in.
+			cmd.Prefs.SocialLinks = nil
+			for _, l := range gho_static.DefaultPreferences.SocialLinks {
+				cmd.Prefs.SocialLinks = append(cmd.Prefs.SocialLinks, gho_static.SocialLink{Name: l.Name})
+			}
+		}
 		if useDefaults {
 			fmt.Println("Using the default preferences (--yes). You can change these later in preferences.yaml.")
-			cmd.Prefs = gho_static.DefaultPreferences
 		} else {
-			cmd.Prefs = askPreferences(r)
+			cmd.Prefs = askPreferences(r, cmd.Prefs)
 		}
 		chooseMethod(r, !useDefaults)
 		return cmd, nil
