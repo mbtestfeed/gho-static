@@ -3,6 +3,7 @@ package gho_static
 import (
 	"fmt"
 	"html/template"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -43,20 +44,20 @@ func truncate(s string) string {
 // folder root), or returns nil if opts doesn't allow its folder to be built.
 // listed is whether the page's folder is listed by its parent's template
 // page, so isn't published without a date.
-func (md mdFiles) pageLink(mdPath, root string, opts Options, listed bool) (*SubPage, error) {
-	draft, unreleased := md.folderStatus(filepath.Dir(mdPath))
+func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPage, error) {
+	draft, unreleased := s.folderStatus(path.Dir(mdPath))
 	if opts.skip(draft, unreleased) {
 		return nil, nil
 	}
-	meta := md[mdPath].Meta
-	_, link, err := PagePath(mdPath, root, opts.Publish)
+	meta := s.md[mdPath].Meta
+	_, link, err := s.pagePath(mdPath, root, opts.Publish)
 	if err != nil {
 		return nil, err
 	}
 	if meta.Title == "" {
 		// Untitled pages are named after their folder, e.g. 20261012_my_post
 		// -> My post, or Untitled if the folder is only a date.
-		title := strings.ReplaceAll(PostName(filepath.Base(filepath.Dir(mdPath))), "_", " ")
+		title := strings.ReplaceAll(PostName(path.Base(path.Dir(mdPath))), "_", " ")
 		if title == "" {
 			title = "untitled"
 		}
@@ -68,7 +69,7 @@ func (md mdFiles) pageLink(mdPath, root string, opts Options, listed bool) (*Sub
 	}
 	var tags []Tag
 	for _, name := range meta.Tags {
-		tags = append(tags, newTag(name, root, opts.Publish))
+		tags = append(tags, s.newTag(name, root, opts.Publish))
 	}
 	return &SubPage{
 		Title:      meta.Title,
@@ -84,14 +85,14 @@ func (md mdFiles) pageLink(mdPath, root string, opts Options, listed bool) (*Sub
 
 // subPages collects links to the markdown pages in dir's subfolders, skipping
 // folders opts doesn't allow, ordered most recently published first.
-func (md mdFiles) subPages(dir *file_access.ContentDir, root string, opts Options) ([]SubPage, error) {
+func (s source) subPages(dir *file_access.ContentDir, root string, opts Options) ([]SubPage, error) {
 	var pages []SubPage
 	for _, sub := range dir.Dirs {
 		for _, f := range sub.Files {
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
 				continue
 			}
-			link, err := md.pageLink(f, root, opts, true)
+			link, err := s.pageLink(f, root, opts, true)
 			if err != nil {
 				return nil, err
 			}
@@ -107,12 +108,12 @@ func (md mdFiles) subPages(dir *file_access.ContentDir, root string, opts Option
 // recentPages returns the n most recently published pages listed by any
 // template page in content (the content folder root), skipping folders opts
 // doesn't allow.
-func (md mdFiles) recentPages(content *file_access.ContentDir, opts Options, n int) ([]SubPage, error) {
+func (s source) recentPages(content *file_access.ContentDir, opts Options, n int) ([]SubPage, error) {
 	var pages []SubPage
 	var walk func(dir *file_access.ContentDir) error
 	walk = func(dir *file_access.ContentDir) error {
 		if hasListing(dir) {
-			subs, err := md.subPages(dir, content.Path, opts)
+			subs, err := s.subPages(dir, content.Path, opts)
 			if err != nil {
 				return err
 			}
@@ -146,7 +147,7 @@ const tagsDir = "tags"
 
 // collectTags gathers the tags of the markdown pages in content (the content
 // folder root) that opts allows to be built, ordered by name.
-func (md mdFiles) collectTags(content *file_access.ContentDir, opts Options) ([]Tag, error) {
+func (s source) collectTags(content *file_access.ContentDir, opts Options) ([]Tag, error) {
 	byKey := map[string]*Tag{}
 	var walk func(dir *file_access.ContentDir, listed bool) error
 	walk = func(dir *file_access.ContentDir, listed bool) error {
@@ -154,11 +155,11 @@ func (md mdFiles) collectTags(content *file_access.ContentDir, opts Options) ([]
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
 				continue
 			}
-			meta := md[f].Meta
+			meta := s.md[f].Meta
 			if len(meta.Tags) == 0 {
 				continue
 			}
-			link, err := md.pageLink(f, content.Path, opts, listed)
+			link, err := s.pageLink(f, content.Path, opts, listed)
 			if err != nil {
 				return err
 			}
@@ -170,7 +171,7 @@ func (md mdFiles) collectTags(content *file_access.ContentDir, opts Options) ([]
 				key := tagSlug(name)
 				t := byKey[key]
 				if t == nil {
-					tag := newTag(name, content.Path, opts.Publish)
+					tag := s.newTag(name, content.Path, opts.Publish)
 					t = &tag
 					byKey[key] = t
 				}
@@ -199,10 +200,10 @@ func (md mdFiles) collectTags(content *file_access.ContentDir, opts Options) ([]
 
 // newTag returns the tag name, linked to its page if the content folder
 // root has a tags template page.
-func newTag(name, root string, publish bool) Tag {
+func (s source) newTag(name, root string, publish bool) Tag {
 	key := tagSlug(name)
 	t := Tag{Name: name, file: path.Join(tagsDir, key, "index.html")}
-	if _, err := os.Stat(filepath.Join(root, tagsDir, tagsDir+".html")); err == nil {
+	if fileExists(s, path.Join(root, tagsDir, tagsDir+".html")) {
 		t.Link = t.file
 		if publish {
 			t.Link = path.Join(tagsDir, key) + "/"
@@ -244,26 +245,33 @@ func hasListing(dir *file_access.ContentDir) bool {
 
 // undatedPage returns the first markdown file directly in dir without a
 // valid published date, or "" if there is none.
-func (md mdFiles) undatedPage(dir *file_access.ContentDir) string {
+func (s source) undatedPage(dir *file_access.ContentDir) string {
 	for _, f := range dir.Files {
 		if !strings.EqualFold(filepath.Ext(f), ".md") {
 			continue
 		}
-		if _, ok := parseDate(md[f].Meta.Published); !ok {
+		if _, ok := parseDate(s.md[f].Meta.Published); !ok {
 			return f
 		}
 	}
 	return ""
 }
 
+// readContent crawls and reads the content folder of the site at srcDir.
+func readContent(srcDir string) (source, *file_access.ContentDir, error) {
+	fsys := os.DirFS(srcDir)
+	content, err := file_access.CrawlContent(fsys, "content")
+	if err != nil {
+		return source{}, nil, err
+	}
+	s, err := readSource(fsys, content)
+	return s, content, err
+}
+
 // UndatedPages returns the markdown files in srcDir's listed content folders
 // (those whose parent has a template page) without a valid published date.
 func UndatedPages(srcDir string) ([]string, error) {
-	content, err := file_access.CrawlContent(filepath.Join(srcDir, "content"))
-	if err != nil {
-		return nil, err
-	}
-	md, err := readMarkdown(content)
+	s, content, err := readContent(srcDir)
 	if err != nil {
 		return nil, err
 	}
@@ -271,8 +279,8 @@ func UndatedPages(srcDir string) ([]string, error) {
 	var walk func(dir *file_access.ContentDir, listed bool)
 	walk = func(dir *file_access.ContentDir, listed bool) {
 		if listed {
-			if page := md.undatedPage(dir); page != "" {
-				pages = append(pages, page)
+			if page := s.undatedPage(dir); page != "" {
+				pages = append(pages, filepath.Join(srcDir, filepath.FromSlash(page)))
 			}
 		}
 		for _, sub := range dir.Dirs {
@@ -286,18 +294,14 @@ func UndatedPages(srcDir string) ([]string, error) {
 // DraftPages returns the markdown files in srcDir's content folder marked
 // as drafts, ordered by path.
 func DraftPages(srcDir string) ([]string, error) {
-	content, err := file_access.CrawlContent(filepath.Join(srcDir, "content"))
-	if err != nil {
-		return nil, err
-	}
-	md, err := readMarkdown(content)
+	s, _, err := readContent(srcDir)
 	if err != nil {
 		return nil, err
 	}
 	var pages []string
-	for path, f := range md {
+	for p, f := range s.md {
 		if f.Meta.Draft {
-			pages = append(pages, path)
+			pages = append(pages, filepath.Join(srcDir, filepath.FromSlash(p)))
 		}
 	}
 	slices.Sort(pages)
@@ -324,7 +328,7 @@ func adjacent(pages []SubPage, link string) (previous, next *SubPage) {
 // SubPages set to subs) into page's content, titles the page after the
 // template's file name unless it already has a title, and writes it with
 // writePage.
-func writeTemplatePage(tmpl *template.Template, page Page, subs []SubPage, tmplPath, out string, assets []string) error {
+func (s source) writeTemplatePage(tmpl *template.Template, page Page, subs []SubPage, tmplPath, out string, assets []string) error {
 	page.SubPages = subs
 
 	name := filepath.Base(tmplPath)
@@ -336,7 +340,12 @@ func writeTemplatePage(tmpl *template.Template, page Page, subs []SubPage, tmplP
 		page.Meta.Title = page.Tag.Name
 	}
 
-	contentTmpl, err := template.ParseFiles(tmplPath)
+	// Read, rather than template.ParseFS, as that treats the path as a glob.
+	tmplBytes, err := fs.ReadFile(s, tmplPath)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", tmplPath, err)
+	}
+	contentTmpl, err := template.New(name).Parse(string(tmplBytes))
 	if err != nil {
 		return fmt.Errorf("failed to parse %s: %w", tmplPath, err)
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -143,26 +144,30 @@ type mdFile struct {
 	Body []byte
 }
 
-// mdFiles holds each markdown file in the content folder by path, so each
-// is only read and parsed once.
-type mdFiles map[string]mdFile
+// source is the site's source folder, with each markdown file in its content
+// folder held by path, so each is only read and parsed once. Paths are slash
+// separated, within the source folder.
+type source struct {
+	fs.FS
+	md map[string]mdFile
+}
 
-// readMarkdown reads and parses each markdown file in content and its
-// subfolders.
-func readMarkdown(content *file_access.ContentDir) (mdFiles, error) {
-	md := mdFiles{}
+// readSource reads and parses each markdown file in content (crawled from
+// fsys) and its subfolders.
+func readSource(fsys fs.FS, content *file_access.ContentDir) (source, error) {
+	s := source{FS: fsys, md: map[string]mdFile{}}
 	var walk func(dir *file_access.ContentDir) error
 	walk = func(dir *file_access.ContentDir) error {
 		for _, f := range dir.Files {
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
 				continue
 			}
-			mdBytes, err := os.ReadFile(f)
+			mdBytes, err := fs.ReadFile(fsys, f)
 			if err != nil {
 				return fmt.Errorf("failed to read %s: %w", f, err)
 			}
 			meta, body := parseFrontMatter(mdBytes)
-			md[f] = mdFile{Meta: meta, Body: body}
+			s.md[f] = mdFile{Meta: meta, Body: body}
 		}
 		for _, sub := range dir.Dirs {
 			if err := walk(sub); err != nil {
@@ -171,7 +176,7 @@ func readMarkdown(content *file_access.ContentDir) (mdFiles, error) {
 		}
 		return nil
 	}
-	return md, walk(content)
+	return s, walk(content)
 }
 
 // writeMarkdownPage converts f into page's content and writes it with
@@ -251,14 +256,23 @@ func PagePath(src, root string, publish bool) (file, link string, err error) {
 	if err != nil {
 		return "", "", err
 	}
+	return source{FS: os.DirFS(root)}.pagePath(filepath.ToSlash(rel), ".", publish)
+}
+
+// pagePath is PagePath for src and root in s.
+func (s source) pagePath(src, root string, publish bool) (file, link string, err error) {
+	rel, err := filepath.Rel(root, src)
+	if err != nil {
+		return "", "", err
+	}
 	base := filepath.ToSlash(strings.TrimSuffix(rel, filepath.Ext(rel)))
 	if !publish {
 		return base + ".html", base + ".html", nil
 	}
 
-	entries, err := os.ReadDir(filepath.Dir(src))
+	entries, err := fs.ReadDir(s, path.Dir(src))
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read %s: %w", filepath.Dir(src), err)
+		return "", "", fmt.Errorf("failed to read %s: %w", path.Dir(src), err)
 	}
 	// A template page and its markdown intro share a name, and are one page.
 	pages := map[string]bool{}
@@ -290,9 +304,9 @@ func (o Options) skip(draft, unreleased bool) bool {
 
 // folderStatus reports whether any markdown file directly in dir is a draft
 // or unreleased.
-func (md mdFiles) folderStatus(dir string) (draft, unreleased bool) {
-	for path, f := range md {
-		if filepath.Dir(path) == dir {
+func (s source) folderStatus(dir string) (draft, unreleased bool) {
+	for p, f := range s.md {
+		if path.Dir(p) == dir {
 			draft = draft || f.Meta.Draft
 			unreleased = unreleased || f.Meta.Unreleased()
 		}
@@ -306,12 +320,12 @@ const warning, reset = "\033[33;40m", "\033[0m"
 
 // warnUnpublished prints a warning for each markdown page directly in dir
 // that's a draft or has a publish date in the future, so isn't published.
-func (md mdFiles) warnUnpublished(dir *file_access.ContentDir) {
+func (s source) warnUnpublished(dir *file_access.ContentDir) {
 	for _, f := range dir.Files {
 		if !strings.EqualFold(filepath.Ext(f), ".md") {
 			continue
 		}
-		meta := md[f].Meta
+		meta := s.md[f].Meta
 		var reasons []string
 		if meta.Draft {
 			reasons = append(reasons, "is a draft")
@@ -333,30 +347,30 @@ func (md mdFiles) warnUnpublished(dir *file_access.ContentDir) {
 // has a template page) with no published date when publishing. siblings is
 // the parent folder's template page listing (if any), used to link each
 // markdown page to its neighbours.
-func (md mdFiles) buildContent(dir *file_access.ContentDir, root string, tmpl *template.Template, layout Page, buildDir string, shared []string, opts Options, siblings []SubPage, listed bool) error {
+func (s source) buildContent(dir *file_access.ContentDir, root string, tmpl *template.Template, layout Page, buildDir string, shared []string, opts Options, siblings []SubPage, listed bool) error {
 	rel, err := filepath.Rel(root, dir.Path)
 	if err != nil {
 		return err
 	}
 	var listing []SubPage
 	if hasListing(dir) {
-		if listing, err = md.subPages(dir, root, opts); err != nil {
+		if listing, err = s.subPages(dir, root, opts); err != nil {
 			return err
 		}
 	}
 
 	for _, sub := range dir.Dirs {
-		if err := md.buildContent(sub, root, tmpl, layout, buildDir, shared, opts, listing, hasListing(dir)); err != nil {
+		if err := s.buildContent(sub, root, tmpl, layout, buildDir, shared, opts, listing, hasListing(dir)); err != nil {
 			return err
 		}
 	}
 
-	skip := opts.skip(md.folderStatus(dir.Path))
+	skip := opts.skip(s.folderStatus(dir.Path))
 	if skip {
-		md.warnUnpublished(dir)
+		s.warnUnpublished(dir)
 	}
 	if listed && opts.Publish && !skip {
-		if undated := md.undatedPage(dir); undated != "" {
+		if undated := s.undatedPage(dir); undated != "" {
 			fmt.Fprintf(os.Stderr, "error: %s has no published date, so it wasn't published\n", undated)
 			skip = true
 		}
@@ -376,7 +390,7 @@ func (md mdFiles) buildContent(dir *file_access.ContentDir, root string, tmpl *t
 			continue
 		}
 		name := filepath.Join(rel, filepath.Base(f))
-		assetBytes, err := os.ReadFile(f)
+		assetBytes, err := fs.ReadFile(s, f)
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", f, err)
 		}
@@ -401,7 +415,7 @@ func (md mdFiles) buildContent(dir *file_access.ContentDir, root string, tmpl *t
 		if ext == ".md" && slices.Contains(dir.Files, stem+".html") {
 			continue
 		}
-		file, link, err := PagePath(f, root, opts.Publish)
+		file, link, err := s.pagePath(f, root, opts.Publish)
 		if err != nil {
 			return err
 		}
@@ -413,19 +427,19 @@ func (md mdFiles) buildContent(dir *file_access.ContentDir, root string, tmpl *t
 		page.Root = rootFor(file)
 		if ext == ".md" {
 			page.Previous, page.Next = adjacent(siblings, link)
-			err = writeMarkdownPage(tmpl, page, md[f], out, rel, pageAssets)
+			err = writeMarkdownPage(tmpl, page, s.md[f], out, rel, pageAssets)
 		} else {
-			if intro, ok := md[stem+".md"]; ok {
+			if intro, ok := s.md[stem+".md"]; ok {
 				page.Meta = intro.Meta
 				page.Intro = template.HTML(mdToHTML(intro.Body, page.Root, rel, intro.Meta.TOC))
 			}
-			err = writeTemplatePage(tmpl, page, listing, f, out, pageAssets)
+			err = s.writeTemplatePage(tmpl, page, listing, f, out, pageAssets)
 		}
 		if err != nil {
 			return err
 		}
 		if rel == tagsDir && strings.EqualFold(filepath.Base(f), tagsDir+".html") {
-			if err := writeTagPages(tmpl, layout, f, buildDir, pageAssets); err != nil {
+			if err := s.writeTagPages(tmpl, layout, f, buildDir, pageAssets); err != nil {
 				return err
 			}
 		}
@@ -433,15 +447,15 @@ func (md mdFiles) buildContent(dir *file_access.ContentDir, root string, tmpl *t
 	return nil
 }
 
-// fileExists reports whether path exists.
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
+// fileExists reports whether name exists in fsys.
+func fileExists(fsys fs.FS, name string) bool {
+	_, err := fs.Stat(fsys, name)
 	return err == nil
 }
 
 // writeTagPages renders the tags template page at tmplPath again for each of
 // layout's tags, as that tag's own page listing the pages that have it.
-func writeTagPages(tmpl *template.Template, layout Page, tmplPath, buildDir string, assets []string) error {
+func (s source) writeTagPages(tmpl *template.Template, layout Page, tmplPath, buildDir string, assets []string) error {
 	for _, tag := range layout.Tags {
 		out := filepath.Join(buildDir, filepath.FromSlash(tag.file))
 		if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
@@ -449,7 +463,7 @@ func writeTagPages(tmpl *template.Template, layout Page, tmplPath, buildDir stri
 		}
 		page := layout
 		page.Root, page.Tag = rootFor(tag.file), &tag
-		if err := writeTemplatePage(tmpl, page, nil, tmplPath, out, assets); err != nil {
+		if err := s.writeTemplatePage(tmpl, page, nil, tmplPath, out, assets); err != nil {
 			return err
 		}
 	}
@@ -459,15 +473,19 @@ func writeTagPages(tmpl *template.Template, layout Page, tmplPath, buildDir stri
 // Build generates the site from srcDir into outDir, returning its build
 // version.
 func Build(srcDir, outDir string, opts Options) (string, error) {
+	if _, err := os.Stat(srcDir); err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
 	version := newVersion()
-	if err := buildSite(srcDir, outDir, opts, version); err != nil {
+	if err := buildSite(os.DirFS(srcDir), outDir, opts, version); err != nil {
 		return "", err
 	}
 	return version, nil
 }
 
-// buildSite generates the site from srcDir into outDir, marked with version.
-func buildSite(srcDir, outDir string, opts Options, version string) error {
+// buildSite generates the site from the source folder fsys into outDir,
+// marked with version.
+func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 	if outDir == "" {
 		outDir = "."
 	}
@@ -475,66 +493,62 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		return fmt.Errorf("invalid output directory: %s", outDir)
 	}
 
-	if _, err := os.Stat(srcDir); err != nil {
-		return fmt.Errorf("invalid path: %w", err)
+	if !fileExists(fsys, "index.html") {
+		return fmt.Errorf("missing index.html in the site folder")
+	}
+	if !fileExists(fsys, "index.md") {
+		return fmt.Errorf("missing index.md in the site folder")
 	}
 
-	if _, err := os.Stat(filepath.Join(srcDir, "index.html")); err != nil {
-		return fmt.Errorf("missing index.html in %s", srcDir)
-	}
-	if _, err := os.Stat(filepath.Join(srcDir, "index.md")); err != nil {
-		return fmt.Errorf("missing index.md in %s", srcDir)
-	}
-
-	content, err := file_access.CrawlContent(filepath.Join(srcDir, "content"))
+	content, err := file_access.CrawlContent(fsys, "content")
 	if err != nil {
 		return err
 	}
-	md, err := readMarkdown(content)
+	s, err := readSource(fsys, content)
 	if err != nil {
 		return err
 	}
 
-	prefs, err := ReadPreferences(filepath.Join(srcDir, "preferences.yaml"))
+	prefs, err := readPreferences(fsys, "preferences.yaml")
 	if err != nil {
 		return err
 	}
 
 	templates := []string{
-		filepath.Join(srcDir, "index.html"),
-		filepath.Join(srcDir, "structure", "header", "header.html"),
-		filepath.Join(srcDir, "structure", "footer", "footer.html"),
+		"index.html",
+		"structure/header/header.html",
+		"structure/footer/footer.html",
 	}
 	// The sidebars are optional, so sites made before them still build, and
 	// can be turned off in preferences. Recent blogs is also left out of
 	// sites without a blogs folder.
-	for _, s := range []struct {
+	for _, sidebar := range []struct {
 		name string
 		show bool
 	}{
 		{"intro-sidebar", prefs.ShowIntroSidebar},
-		{"recent-blogs", prefs.ShowRecentBlogsSidebar && fileExists(filepath.Join(content.Path, "blogs"))},
+		{"recent-blogs", prefs.ShowRecentBlogsSidebar && fileExists(fsys, path.Join(content.Path, "blogs"))},
 	} {
-		if path := filepath.Join(srcDir, "structure", s.name, s.name+".html"); s.show && fileExists(path) {
-			templates = append(templates, path)
+		if tmplPath := path.Join("structure", sidebar.name, sidebar.name+".html"); sidebar.show && fileExists(fsys, tmplPath) {
+			templates = append(templates, tmplPath)
 		}
 	}
-	tmpl, err := template.ParseFiles(templates...)
+	tmpl, err := template.ParseFS(fsys, templates...)
 	if err != nil {
 		return fmt.Errorf("failed to parse templates: %w", err)
 	}
 
 	replacements := []Replacement{
-		{ID: "content", Path: "./index.md"},
-		{ID: "header", Path: "./structure/header/header.html"},
-		{ID: "footer", Path: "./structure/footer/footer.html"},
-		{ID: "intro-sidebar", Path: "./structure/intro-sidebar/intro-sidebar.html"},
-		{ID: "recent-blogs", Path: "./structure/recent-blogs/recent-blogs.html"},
+		{ID: "content", Path: "index.md"},
+		{ID: "header", Path: "structure/header/header.html"},
+		{ID: "footer", Path: "structure/footer/footer.html"},
+		{ID: "intro-sidebar", Path: "structure/intro-sidebar/intro-sidebar.html"},
+		{ID: "recent-blogs", Path: "structure/recent-blogs/recent-blogs.html"},
 	}
 
 	var navLinks []NavLink
 	for _, name := range prefs.navLinkNames() {
-		srcs, _ := filepath.Glob(filepath.Join(content.Path, name, name+".*"))
+		srcs, _ := fs.Glob(fsys, path.Join(content.Path, name, name+".*"))
 		srcs = slices.DeleteFunc(srcs, func(s string) bool {
 			ext := strings.ToLower(filepath.Ext(s))
 			return ext != ".md" && ext != ".html"
@@ -544,11 +558,11 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 			continue
 		}
 		src := srcs[0]
-		draft, unreleased := md.folderStatus(filepath.Dir(src))
+		draft, unreleased := s.folderStatus(path.Dir(src))
 		if opts.skip(draft, unreleased) {
 			continue
 		}
-		_, link, err := PagePath(src, content.Path, opts.Publish)
+		_, link, err := s.pagePath(src, content.Path, opts.Publish)
 		if err != nil {
 			return err
 		}
@@ -575,10 +589,10 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		},
 		Root: rootFor("index.html"),
 	}
-	if layout.Tags, err = md.collectTags(content, opts); err != nil {
+	if layout.Tags, err = s.collectTags(content, opts); err != nil {
 		return err
 	}
-	if layout.Site.RecentBlogs, err = md.recentPages(content, opts, 3); err != nil {
+	if layout.Site.RecentBlogs, err = s.recentPages(content, opts, 3); err != nil {
 		return err
 	}
 
@@ -604,10 +618,13 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		return fmt.Errorf("failed to write .nojekyll: %w", err)
 	}
 	// The site's own static files (images, logo) are copied as is.
-	staticDir := filepath.Join(srcDir, "static")
-	if _, err := os.Stat(staticDir); err == nil {
-		if err := os.CopyFS(filepath.Join(buildDir, "static"), os.DirFS(staticDir)); err != nil {
-			return fmt.Errorf("failed to copy %s: %w", staticDir, err)
+	if fileExists(fsys, "static") {
+		staticFS, err := fs.Sub(fsys, "static")
+		if err == nil {
+			err = os.CopyFS(filepath.Join(buildDir, "static"), staticFS)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to copy static: %w", err)
 		}
 	}
 	for _, dst := range []string{buildDir, filepath.Join(buildDir, "static")} {
@@ -621,7 +638,7 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		base := strings.TrimSuffix(r.Path, filepath.Ext(r.Path))
 		for _, ext := range assetExts {
 			name := filepath.Base(base) + ext
-			assetBytes, err := os.ReadFile(filepath.Join(srcDir, base+ext))
+			assetBytes, err := fs.ReadFile(fsys, base+ext)
 			if os.IsNotExist(err) || (err == nil && len(assetBytes) == 0) {
 				continue
 			}
@@ -640,7 +657,7 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		}
 	}
 
-	indexBytes, err := os.ReadFile(filepath.Join(srcDir, "index.md"))
+	indexBytes, err := fs.ReadFile(fsys, "index.md")
 	if err != nil {
 		return fmt.Errorf("failed to read index.md: %w", err)
 	}
@@ -649,5 +666,5 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		return err
 	}
 
-	return md.buildContent(content, content.Path, tmpl, layout, buildDir, shared, opts, nil, false)
+	return s.buildContent(content, content.Path, tmpl, layout, buildDir, shared, opts, nil, false)
 }

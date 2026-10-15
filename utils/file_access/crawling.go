@@ -2,42 +2,45 @@ package file_access
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 )
 
 // ContentDir is a folder within the content directory, holding the files
-// directly inside it and its subfolders.
+// directly inside it and its subfolders. Paths are slash separated, within
+// the fs.FS it was crawled from.
 type ContentDir struct {
 	Path  string
 	Files []string
 	Dirs  []*ContentDir
 }
 
-// CrawlContent recursively collects all files under path. Folders with no
-// files anywhere beneath them are omitted.
-func CrawlContent(path string) (*ContentDir, error) {
-	entries, err := os.ReadDir(path)
+// CrawlContent recursively collects all files under dir in fsys. Folders with
+// no files anywhere beneath them are omitted.
+func CrawlContent(fsys fs.FS, dir string) (*ContentDir, error) {
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %s: %w", path, err)
+		return nil, fmt.Errorf("failed to read %s: %w", dir, err)
 	}
 
-	dir := &ContentDir{Path: path}
+	content := &ContentDir{Path: dir}
 	for _, e := range entries {
-		entryPath := filepath.Join(path, e.Name())
+		entryPath := path.Join(dir, e.Name())
 		if e.IsDir() {
-			sub, err := CrawlContent(entryPath)
+			sub, err := CrawlContent(fsys, entryPath)
 			if err != nil {
 				return nil, err
 			}
 			if len(sub.Files) > 0 || len(sub.Dirs) > 0 {
-				dir.Dirs = append(dir.Dirs, sub)
+				content.Dirs = append(content.Dirs, sub)
 			}
 		} else {
-			dir.Files = append(dir.Files, entryPath)
+			content.Files = append(content.Files, entryPath)
 		}
 	}
-	return dir, nil
+	return content, nil
 }
 
 // MirrorDirs recreates dir's subfolder structure, relative to root, under dst.

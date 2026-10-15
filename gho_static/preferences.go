@@ -2,7 +2,9 @@ package gho_static
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/template"
@@ -125,8 +127,14 @@ var DefaultPreferences = Preferences{
 // ReadPreferences reads the preferences file at path over the defaults. A
 // missing file gives the defaults.
 func ReadPreferences(path string) (Preferences, error) {
+	return readPreferences(os.DirFS(filepath.Dir(path)), filepath.Base(path))
+}
+
+// readPreferences reads the preferences file at path in fsys over the
+// defaults. A missing file gives the defaults.
+func readPreferences(fsys fs.FS, path string) (Preferences, error) {
 	prefs := DefaultPreferences
-	b, err := os.ReadFile(path)
+	b, err := fs.ReadFile(fsys, path)
 	if os.IsNotExist(err) {
 		return prefs, nil
 	}

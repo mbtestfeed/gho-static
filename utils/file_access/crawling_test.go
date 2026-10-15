@@ -48,60 +48,37 @@ func TestCrawlContent(t *testing.T) {
 		name  string
 		files []string
 		dirs  []string
-		want  func(root string) *ContentDir
+		want  *ContentDir
 	}{
 		{
 			name: "empty directory",
-			want: func(root string) *ContentDir {
-				return &ContentDir{Path: root}
-			},
+			want: &ContentDir{Path: "."},
 		},
 		{
 			name:  "files of any type at root",
 			files: []string{"a.html", "b.md", "c.css"},
-			want: func(root string) *ContentDir {
-				return &ContentDir{
-					Path: root,
-					Files: []string{
-						filepath.Join(root, "a.html"),
-						filepath.Join(root, "b.md"),
-						filepath.Join(root, "c.css"),
-					},
-				}
-			},
+			want:  &ContentDir{Path: ".", Files: []string{"a.html", "b.md", "c.css"}},
 		},
 		{
 			name:  "nested folders",
 			files: []string{"about/about.md", "blog/2026/post.md", "blog/index.html"},
-			want: func(root string) *ContentDir {
-				return &ContentDir{
-					Path: root,
-					Dirs: []*ContentDir{
-						{
-							Path:  filepath.Join(root, "about"),
-							Files: []string{filepath.Join(root, "about", "about.md")},
-						},
-						{
-							Path:  filepath.Join(root, "blog"),
-							Files: []string{filepath.Join(root, "blog", "index.html")},
-							Dirs: []*ContentDir{
-								{
-									Path:  filepath.Join(root, "blog", "2026"),
-									Files: []string{filepath.Join(root, "blog", "2026", "post.md")},
-								},
-							},
-						},
+			want: &ContentDir{
+				Path: ".",
+				Dirs: []*ContentDir{
+					{Path: "about", Files: []string{"about/about.md"}},
+					{
+						Path:  "blog",
+						Files: []string{"blog/index.html"},
+						Dirs:  []*ContentDir{{Path: "blog/2026", Files: []string{"blog/2026/post.md"}}},
 					},
-				}
+				},
 			},
 		},
 		{
 			name:  "empty folders omitted",
 			files: []string{"page.md"},
 			dirs:  []string{"empty", "deep/empty"},
-			want: func(root string) *ContentDir {
-				return &ContentDir{Path: root, Files: []string{filepath.Join(root, "page.md")}}
-			},
+			want:  &ContentDir{Path: ".", Files: []string{"page.md"}},
 		},
 	}
 
@@ -109,12 +86,12 @@ func TestCrawlContent(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			root := makeTestDir(t, c.files, c.dirs)
 
-			got, err := CrawlContent(root)
+			got, err := CrawlContent(os.DirFS(root), ".")
 			if err != nil {
 				t.Fatalf("CrawlContent: %v", err)
 			}
-			if want := c.want(root); !reflect.DeepEqual(got, want) {
-				t.Errorf("CrawlContent(%q) = %#v, want %#v", root, got, want)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("CrawlContent(%q) = %#v, want %#v", root, got, c.want)
 			}
 		})
 	}
@@ -124,7 +101,7 @@ func TestMirrorDirs(t *testing.T) {
 	src := makeTestDir(t, []string{"top.md", "about/about.md", "blog/2026/post.md"}, []string{"empty"})
 	dst := makeTestDir(t, nil, nil)
 
-	content, err := CrawlContent(src)
+	content, err := CrawlContent(os.DirFS(src), ".")
 	if err != nil {
 		t.Fatalf("CrawlContent: %v", err)
 	}
@@ -145,7 +122,7 @@ func TestMirrorDirs(t *testing.T) {
 }
 
 func TestCrawlContentMissingDir(t *testing.T) {
-	if _, err := CrawlContent(filepath.Join(testingTmp, "missing")); err == nil {
+	if _, err := CrawlContent(os.DirFS(testingTmp), "missing"); err == nil {
 		t.Error("expected error for missing directory")
 	}
 }
