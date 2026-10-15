@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -244,6 +245,16 @@ func writePage(tmpl *template.Template, page Page, out string, assets []string) 
 type Options struct {
 	Preview bool // leave out drafts and unreleased pages, as publishing does, but keep local links
 	Publish bool // leave out drafts and unreleased pages, and write pages as folder/index.html linked by folder
+
+	Warnings io.Writer // where build warnings are written, or stderr if nil
+}
+
+// warnings returns where o's build warnings are written.
+func (o Options) warnings() io.Writer {
+	if o.Warnings == nil {
+		return os.Stderr
+	}
+	return o.Warnings
 }
 
 // PagePath returns where the page built from src (a .md or .html file under
@@ -318,9 +329,9 @@ func (s source) folderStatus(dir string) (draft, unreleased bool) {
 // warning text, and return to normal text.
 const warning, reset = "\033[33;40m", "\033[0m"
 
-// warnUnpublished prints a warning for each markdown page directly in dir
-// that's a draft or has a publish date in the future, so isn't published.
-func (s source) warnUnpublished(dir *file_access.ContentDir) {
+// warnUnpublished writes a warning to w for each markdown page directly in
+// dir that's a draft or has a publish date in the future, so isn't published.
+func (s source) warnUnpublished(dir *file_access.ContentDir, w io.Writer) {
 	for _, f := range dir.Files {
 		if !strings.EqualFold(filepath.Ext(f), ".md") {
 			continue
@@ -334,7 +345,7 @@ func (s source) warnUnpublished(dir *file_access.ContentDir) {
 			reasons = append(reasons, "has a publish date in the future ("+meta.ReleaseLine()+")")
 		}
 		if len(reasons) > 0 {
-			fmt.Fprintf(os.Stderr, "%swarning: %s %s, so it won't be published or deployed%s\n", warning, f, strings.Join(reasons, " and "), reset)
+			fmt.Fprintf(w, "%swarning: %s %s, so it won't be published or deployed%s\n", warning, f, strings.Join(reasons, " and "), reset)
 		}
 	}
 }
@@ -367,11 +378,11 @@ func (s source) buildContent(dir *file_access.ContentDir, root string, tmpl *tem
 
 	skip := opts.skip(s.folderStatus(dir.Path))
 	if skip {
-		s.warnUnpublished(dir)
+		s.warnUnpublished(dir, opts.warnings())
 	}
 	if listed && opts.Publish && !skip {
 		if undated := s.undatedPage(dir); undated != "" {
-			fmt.Fprintf(os.Stderr, "error: %s has no published date, so it wasn't published\n", undated)
+			fmt.Fprintf(opts.warnings(), "error: %s has no published date, so it wasn't published\n", undated)
 			skip = true
 		}
 	}
@@ -554,7 +565,7 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 			return ext != ".md" && ext != ".html"
 		})
 		if len(srcs) == 0 {
-			fmt.Fprintf(os.Stderr, "%swarning: no page found for nav link %q, so it was left out of the menu%s\n", warning, name, reset)
+			fmt.Fprintf(opts.warnings(), "%swarning: no page found for nav link %q, so it was left out of the menu%s\n", warning, name, reset)
 			continue
 		}
 		src := srcs[0]
