@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,40 +91,43 @@ type Command struct {
 	Prefs    gho_static.Preferences // only set for GenerateSite
 	Method   deployment.Method      // only set for GenerateSite, SetupDeployment and Deploy
 	Repo     string                 // git remote for the build folder, only set for GitHub Pages
+
+	method      string // --deployment-method value, if it's a method
+	badMethod   string // --deployment-method value that isn't a method, so is taken as the site folder
+	methodGiven bool   // --deployment-method was given
+	repoGiven   bool   // --repo was given
+	collection  string // content folder a page or post is generated in
 }
 
-// Parse reads args (without the program name) into a Command, asking for
-// anything missing that it needs.
+// Parse reads args (without the program name) into a Command, without
+// looking at the disk or asking anything: Resolve does that.
 func Parse(args []string) (Command, error) {
 	flags, positional := utils.ParseArgs(args)
 
 	var cmd Command
-	generate, useDefaults, deploying, drafts := false, false, false, false
-	methodFlag, method, repoGiven := false, "", false
+	generate, deploying, drafts := false, false, false
 	for _, f := range flags {
 		switch f.Key {
 		case "g", "generate":
 			generate, cmd.GenPath = true, f.Val
 			continue
 		case "deployment-method":
-			methodFlag, method = true, f.Val
-			if _, ok := deployment.Methods[method]; !ok && method != "" {
+			cmd.methodGiven, cmd.method = true, f.Val
+			if _, ok := deployment.Methods[f.Val]; !ok && f.Val != "" {
 				// No method given, so ParseArgs took the site folder as one.
-				if info, err := os.Stat(method); err != nil || !info.IsDir() {
-					return cmd, fmt.Errorf("unknown deployment method %q: use github-pages or none", method)
-				}
-				positional, method = append(positional, method), ""
+				// Resolve checks it is a folder.
+				positional, cmd.method, cmd.badMethod = append(positional, f.Val), "", f.Val
 			}
 			continue
 		case "repo":
-			cmd.Repo, repoGiven = f.Val, true
+			cmd.Repo, cmd.repoGiven = f.Val, true
 			continue
 		case "preview-publish":
 			cmd.Options.Preview = true
 		case "p", "publish":
 			cmd.Options.Publish = true
 		case "y", "yes":
-			useDefaults = true
+			cmd.Yes = true
 		case "c", "clean":
 			cmd.Clean = true
 		case "deploy":
@@ -154,44 +156,15 @@ func Parse(args []string) (Command, error) {
 		return cmd, fmt.Errorf("missing path argument")
 	}
 
-	// chooseMethod sets the deployment method and repo from the flags,
-	// asking for any not given if ask is set.
-	chooseMethod := func(r *bufio.Reader, ask bool) {
-		cmd.Method = deployment.Methods[method]
-		if method == "" && ask {
-			cmd.Method = askDeploymentMethod(r)
-		}
-		if cmd.Method == deployment.GitHubPages && !repoGiven && ask {
-			cmd.Repo = askRepo(r)
-		}
-	}
-
 	if !generate {
 		cmd.Site = positional[0]
-		if drafts {
-			cmd.Mode, cmd.Yes = PublishDrafts, useDefaults
-			return cmd, nil
-		}
-		if deploying {
+		switch {
+		case drafts:
+			cmd.Mode = PublishDrafts
+		case deploying:
 			cmd.Mode = Deploy
-			if !methodFlag {
-				existing, repo := deployment.Detect(filepath.Join(cmd.Site, "build"))
-				if existing != deployment.None {
-					method = "github-pages"
-				}
-				if repo != "" && !repoGiven {
-					cmd.Repo, repoGiven = repo, true
-				}
-			}
-			if useDefaults && (method == "" || (deployment.Methods[method] == deployment.GitHubPages && !repoGiven)) {
-				return cmd, fmt.Errorf("%s has no deployment method or GitHub repo set up, and --yes stops them being asked for. Rerun without --yes, or pass --deployment-method github-pages --repo <url>.", cmd.Site)
-			}
-			chooseMethod(bufio.NewReader(os.Stdin), true)
-			return cmd, nil
-		}
-		if methodFlag {
+		case cmd.methodGiven:
 			cmd.Mode = SetupDeployment
-			chooseMethod(bufio.NewReader(os.Stdin), true)
 		}
 		return cmd, nil
 	}
@@ -202,12 +175,7 @@ func Parse(args []string) (Command, error) {
 	isPage := parts[0] == "content" && len(parts) == 2
 	isPost := parts[0] == "content" && len(parts) == 3
 	if !isPage && !isPost {
-		// Check before prompting so the answers aren't wasted.
-		if _, err := os.Stat(cmd.GenPath); err == nil {
-			return cmd, fmt.Errorf("%s already exists", cmd.GenPath)
-		}
 		cmd.Mode = GenerateSite
-		r := bufio.NewReader(os.Stdin)
 		cmd.Prefs = gho_static.DefaultPreferences
 		if cmd.Clean {
 			cmd.Prefs.SiteName = filepath.Base(filepath.Clean(cmd.GenPath))
@@ -219,48 +187,89 @@ func Parse(args []string) (Command, error) {
 				cmd.Prefs.SocialLinks = append(cmd.Prefs.SocialLinks, gho_static.SocialLink{Name: l.Name})
 			}
 		}
-		chooseMethod(r, !useDefaults)
 		return cmd, nil
 	}
 
 	if len(sites) == 0 {
 		return cmd, fmt.Errorf("missing site folder to create %s in", cmd.GenPath)
 	}
-	cmd.Site = sites[0]
-	if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
-		return cmd, fmt.Errorf("site folder %s does not exist. Create it first with `gho-static -g %s`, then rerun this command.", cmd.Site, cmd.Site)
-	}
+	cmd.Site, cmd.collection = sites[0], parts[1]
 	if isPage {
 		cmd.Mode = GeneratePage
 		cmd.GenPath = filepath.Join(cmd.Site, cmd.GenPath)
 	} else {
-		cmd.Mode = GeneratePost
-		cmd.PostName = parts[2]
-		cmd.GenPath = filepath.Join(cmd.Site, parts[0], parts[1], generator.PostFolder(cmd.PostName, time.Now()))
-	}
-	// Offer a menu link for a new first-level folder, whether it's the page
-	// itself or the parent of a new post.
-	if _, err := os.Stat(filepath.Join(cmd.Site, "content", parts[1])); os.IsNotExist(err) {
-		r := bufio.NewReader(os.Stdin)
-		// A new post's parent is a new collection, so check its name first.
-		if isPost && !useDefaults {
-			if !Interactive() {
-				return cmd, fmt.Errorf("%s would add a new collection, %s, and there's no one to ask whether that's intended. Rerun with --yes to add it.", cmd.GenPath, parts[1])
-			}
-			if !askNewCollection(r, parts[1]) {
-				return cmd, fmt.Errorf("%s wasn't created.", cmd.GenPath)
-			}
-		}
-		if useDefaults || (Interactive() && askNavLink(r, parts[1])) {
-			cmd.NavLink = parts[1]
-		}
+		cmd.Mode, cmd.PostName = GeneratePost, parts[2]
 	}
 	return cmd, nil
 }
 
-// Interactive reports whether stdin is a terminal someone can answer
-// questions from.
-func Interactive() bool {
-	info, err := os.Stdin.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+// Resolve checks cmd (from Parse) against the disk, and asks on t for
+// anything it needs that wasn't given. A generated post is dated now.
+func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
+	if cmd.badMethod != "" {
+		if info, err := os.Stat(cmd.badMethod); err != nil || !info.IsDir() {
+			return cmd, fmt.Errorf("unknown deployment method %q: use github-pages or none", cmd.badMethod)
+		}
+	}
+
+	// chooseMethod sets the deployment method and repo from the flags,
+	// asking for any not given if ask is set.
+	chooseMethod := func(ask bool) {
+		cmd.Method = deployment.Methods[cmd.method]
+		if cmd.method == "" && ask {
+			cmd.Method = t.askDeploymentMethod()
+		}
+		if cmd.Method == deployment.GitHubPages && !cmd.repoGiven && ask {
+			cmd.Repo = t.askRepo()
+		}
+	}
+
+	switch cmd.Mode {
+	case Deploy:
+		if !cmd.methodGiven {
+			existing, repo := deployment.Detect(filepath.Join(cmd.Site, "build"))
+			if existing != deployment.None {
+				cmd.method = "github-pages"
+			}
+			if repo != "" && !cmd.repoGiven {
+				cmd.Repo, cmd.repoGiven = repo, true
+			}
+		}
+		if cmd.Yes && (cmd.method == "" || (deployment.Methods[cmd.method] == deployment.GitHubPages && !cmd.repoGiven)) {
+			return cmd, fmt.Errorf("%s has no deployment method or GitHub repo set up, and --yes stops them being asked for. Rerun without --yes, or pass --deployment-method github-pages --repo <url>.", cmd.Site)
+		}
+		chooseMethod(true)
+	case SetupDeployment:
+		chooseMethod(true)
+	case GenerateSite:
+		// Check before prompting so the answers aren't wasted.
+		if _, err := os.Stat(cmd.GenPath); err == nil {
+			return cmd, fmt.Errorf("%s already exists", cmd.GenPath)
+		}
+		chooseMethod(!cmd.Yes)
+	case GeneratePage, GeneratePost:
+		if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
+			return cmd, fmt.Errorf("site folder %s does not exist. Create it first with `gho-static -g %s`, then rerun this command.", cmd.Site, cmd.Site)
+		}
+		if cmd.Mode == GeneratePost {
+			cmd.GenPath = filepath.Join(cmd.Site, "content", cmd.collection, generator.PostFolder(cmd.PostName, now))
+		}
+		// Offer a menu link for a new first-level folder, whether it's the
+		// page itself or the parent of a new post.
+		if _, err := os.Stat(filepath.Join(cmd.Site, "content", cmd.collection)); os.IsNotExist(err) {
+			// A new post's parent is a new collection, so check its name first.
+			if cmd.Mode == GeneratePost && !cmd.Yes {
+				if !t.Interactive {
+					return cmd, fmt.Errorf("%s would add a new collection, %s, and there's no one to ask whether that's intended. Rerun with --yes to add it.", cmd.GenPath, cmd.collection)
+				}
+				if !t.askNewCollection(cmd.collection) {
+					return cmd, fmt.Errorf("%s wasn't created.", cmd.GenPath)
+				}
+			}
+			if cmd.Yes || (t.Interactive && t.askNavLink(cmd.collection)) {
+				cmd.NavLink = cmd.collection
+			}
+		}
+	}
+	return cmd, nil
 }

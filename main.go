@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -27,6 +26,9 @@ var img embed.FS
 //go:embed README.md
 var readme string
 
+// term is where questions are asked and answered.
+var term = cli.Stdio()
+
 // fileLink returns a file:// URL for path.
 func fileLink(path string) string {
 	if abs, err := filepath.Abs(path); err == nil {
@@ -47,7 +49,6 @@ func fail(err error) {
 // listed page without one, unless publishing (which skips them instead). It
 // returns the build version.
 func build(site, out string, opts gho_static.Options) (string, error) {
-	r := bufio.NewReader(os.Stdin)
 	for !opts.Publish {
 		pages, err := gho_static.UndatedPages(site)
 		if err != nil {
@@ -57,7 +58,7 @@ func build(site, out string, opts gho_static.Options) (string, error) {
 			break
 		}
 		// Dating renames the page's folder, so look again after each one.
-		if err := generator.DatePost(pages[0], cli.AskDate(r, pages[0])); err != nil {
+		if err := generator.DatePost(pages[0], term.AskDate(pages[0], time.Now())); err != nil {
 			return "", err
 		}
 	}
@@ -80,12 +81,11 @@ func publishDrafts(site string, yes bool) error {
 		fmt.Println("There are no draft pages.")
 		return nil
 	}
-	if !yes && !cli.Interactive() {
+	if !yes && !term.Interactive {
 		return fmt.Errorf("%d draft pages weren't published, as there's no one to ask. Rerun with --yes to publish them all.", len(pages))
 	}
-	r := bufio.NewReader(os.Stdin)
 	for _, page := range pages {
-		if !yes && !cli.AskToPublishDraft(r, page) {
+		if !yes && !term.AskToPublishDraft(page) {
 			continue
 		}
 		if err := generator.PublishDraft(page); err != nil {
@@ -98,6 +98,9 @@ func publishDrafts(site string, yes bool) error {
 
 func main() {
 	cmd, err := cli.Parse(os.Args[1:])
+	if err == nil {
+		cmd, err = cli.Resolve(cmd, term, time.Now())
+	}
 	if err != nil {
 		fail(err)
 	}
