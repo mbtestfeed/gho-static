@@ -45,10 +45,10 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-// build builds site into out, first asking for a published date for each
-// listed page without one, unless publishing (which skips them instead). It
-// returns the build version.
-func build(site, out string, opts gho_static.Options) (string, error) {
+// build builds site into site/build, first asking for a published date for
+// each listed page without one, unless publishing (which skips them
+// instead). It returns the build version.
+func build(site string, opts gho_static.Options) (string, error) {
 	for !opts.Publish {
 		pages, err := gho_static.UndatedPages(site)
 		if err != nil {
@@ -62,7 +62,7 @@ func build(site, out string, opts gho_static.Options) (string, error) {
 			return "", err
 		}
 	}
-	return gho_static.Build(site, out, opts)
+	return gho_static.Build(site, opts)
 }
 
 // printVersion prints the build version.
@@ -118,7 +118,7 @@ func main() {
 	var version string
 	switch cmd.Mode {
 	case cli.Build:
-		version, err = build(cmd.Site, cmd.Site, cmd.Options)
+		version, err = build(cmd.Site, cmd.Options)
 	case cli.GenerateSite:
 		// Checked first, so nothing is generated if the repo isn't ready.
 		if err := deployment.Check(cmd.Method, cmd.Repo); err != nil {
@@ -139,7 +139,7 @@ func main() {
 	case cli.SetupDeployment:
 		err = deployment.Setup(filepath.Join(cmd.Site, "build"), cmd.Method, cmd.Repo)
 		if err == nil {
-			version, err = build(cmd.Site, cmd.Site, cmd.Options)
+			version, err = build(cmd.Site, cmd.Options)
 		}
 		if err != nil {
 			fail(err)
@@ -182,8 +182,7 @@ func main() {
 		if err := deployment.Setup(filepath.Join(cmd.GenPath, "build"), cmd.Method, cmd.Repo); err != nil {
 			fail(fmt.Errorf("%s was generated, but its build folder couldn't be set up for deployment: %w", cmd.GenPath, err))
 		}
-		// Build inside the new folder so an existing ./build isn't replaced.
-		if version, err = build(cmd.GenPath, cmd.GenPath, cmd.Options); err != nil {
+		if version, err = build(cmd.GenPath, cmd.Options); err != nil {
 			fail(err)
 		}
 		fmt.Print(cli.Grey + cli.Usage + cli.Reset + "\n")
@@ -197,7 +196,7 @@ func main() {
 		return
 	}
 
-	if version, err = build(cmd.Site, cmd.Site, cmd.Options); err != nil {
+	if version, err = build(cmd.Site, cmd.Options); err != nil {
 		fail(err)
 	}
 	src := filepath.Join(cmd.GenPath, "post.md")

@@ -110,8 +110,7 @@ func (s source) subPages(dir *file_access.ContentDir, root string, opts Options)
 // doesn't allow.
 func (s source) recentPages(content *file_access.ContentDir, opts Options, n int) ([]SubPage, error) {
 	var pages []SubPage
-	var walk func(dir *file_access.ContentDir) error
-	walk = func(dir *file_access.ContentDir) error {
+	err := walk(content, false, func(dir *file_access.ContentDir, _ bool) error {
 		if hasListing(dir) {
 			subs, err := s.subPages(dir, content.Path, opts)
 			if err != nil {
@@ -119,14 +118,9 @@ func (s source) recentPages(content *file_access.ContentDir, opts Options, n int
 			}
 			pages = append(pages, subs...)
 		}
-		for _, sub := range dir.Dirs {
-			if err := walk(sub); err != nil {
-				return err
-			}
-		}
 		return nil
-	}
-	if err := walk(content); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 	slices.SortFunc(pages, func(a, b SubPage) int { return b.published.Compare(a.published) })
@@ -149,8 +143,7 @@ const tagsDir = "tags"
 // folder root) that opts allows to be built, ordered by name.
 func (s source) collectTags(content *file_access.ContentDir, opts Options) ([]Tag, error) {
 	byKey := map[string]*Tag{}
-	var walk func(dir *file_access.ContentDir, listed bool) error
-	walk = func(dir *file_access.ContentDir, listed bool) error {
+	err := walk(content, false, func(dir *file_access.ContentDir, listed bool) error {
 		for _, f := range dir.Files {
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
 				continue
@@ -178,14 +171,9 @@ func (s source) collectTags(content *file_access.ContentDir, opts Options) ([]Ta
 				t.Pages = append(t.Pages, *link)
 			}
 		}
-		for _, sub := range dir.Dirs {
-			if err := walk(sub, hasListing(dir)); err != nil {
-				return err
-			}
-		}
 		return nil
-	}
-	if err := walk(content, false); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -276,18 +264,14 @@ func UndatedPages(srcDir string) ([]string, error) {
 		return nil, err
 	}
 	var pages []string
-	var walk func(dir *file_access.ContentDir, listed bool)
-	walk = func(dir *file_access.ContentDir, listed bool) {
+	walk(content, false, func(dir *file_access.ContentDir, listed bool) error {
 		if listed {
 			if page := s.undatedPage(dir); page != "" {
 				pages = append(pages, filepath.Join(srcDir, filepath.FromSlash(page)))
 			}
 		}
-		for _, sub := range dir.Dirs {
-			walk(sub, hasListing(dir))
-		}
-	}
-	walk(content, false)
+		return nil
+	})
 	return pages, nil
 }
 
@@ -324,13 +308,10 @@ func adjacent(pages []SubPage, link string) (previous, next *SubPage) {
 	return previous, next
 }
 
-// writeTemplatePage executes the content template at tmplPath (with
-// SubPages set to subs) into page's content, titles the page after the
-// template's file name unless it already has a title, and writes it with
-// writePage.
-func (s source) writeTemplatePage(tmpl *template.Template, page Page, subs []SubPage, tmplPath, out string, assets []string) error {
-	page.SubPages = subs
-
+// writeTemplatePage executes the content template at tmplPath into page's
+// content, titles the page after the template's file name unless it already
+// has a title, and writes it with writePage.
+func (s source) writeTemplatePage(tmpl *template.Template, page Page, tmplPath, out string, assets []string) error {
 	name := filepath.Base(tmplPath)
 	if page.Meta.Title == "" {
 		title := strings.TrimSuffix(name, filepath.Ext(name))

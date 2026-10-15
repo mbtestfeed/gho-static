@@ -62,7 +62,7 @@ func Deploy(site string, method Method, repo string) (string, error) {
 	if err := github_pages.Setup(buildDir, repo); err != nil {
 		return "", err
 	}
-	version, err := gho_static.Build(site, site, gho_static.Options{Publish: true})
+	version, err := gho_static.Build(site, gho_static.Options{Publish: true})
 	if err != nil {
 		return "", err
 	}

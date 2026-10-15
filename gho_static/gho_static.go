@@ -154,12 +154,26 @@ type source struct {
 	md map[string]mdFile
 }
 
+// walk calls fn on dir and then each folder beneath it, with whether the
+// folder is listed (its parent has a template page), stopping at the first
+// error. listed is dir's own.
+func walk(dir *file_access.ContentDir, listed bool, fn func(dir *file_access.ContentDir, listed bool) error) error {
+	if err := fn(dir, listed); err != nil {
+		return err
+	}
+	for _, sub := range dir.Dirs {
+		if err := walk(sub, hasListing(dir), fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // readSource reads and parses each markdown file in content (crawled from
 // fsys) and its subfolders, marking those published after now unreleased.
 func readSource(fsys fs.FS, content *file_access.ContentDir, now time.Time) (source, error) {
 	s := source{FS: fsys, md: map[string]mdFile{}}
-	var walk func(dir *file_access.ContentDir) error
-	walk = func(dir *file_access.ContentDir) error {
+	return s, walk(content, false, func(dir *file_access.ContentDir, _ bool) error {
 		for _, f := range dir.Files {
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
 				continue
@@ -172,14 +186,8 @@ func readSource(fsys fs.FS, content *file_access.ContentDir, now time.Time) (sou
 			meta.Unreleased = meta.IsUnreleased(now)
 			s.md[f] = mdFile{Meta: meta, Body: body}
 		}
-		for _, sub := range dir.Dirs {
-			if err := walk(sub); err != nil {
-				return err
-			}
-		}
 		return nil
-	}
-	return s, walk(content)
+	})
 }
 
 // writeMarkdownPage converts f into page's content and writes it with
@@ -353,110 +361,161 @@ func (s source) warnUnpublished(dir *file_access.ContentDir, w io.Writer) {
 	}
 }
 
-// buildContent writes each .md file in dir (and its subfolders) as a page in
-// the matching build subfolder, copying same-folder css/js into the matching
-// static subfolder and linking them, after shared, in the page's head. A
-// folder whose markdown is a draft or unreleased (and not allowed by opts)
-// has none of its own files built, as does a listed folder (one whose parent
-// has a template page) with no published date when publishing. siblings is
-// the parent folder's template page listing (if any), used to link each
-// markdown page to its neighbours.
-func (s source) buildContent(dir *file_access.ContentDir, root string, tmpl *template.Template, layout Page, buildDir string, shared []string, opts Options, siblings []SubPage, listed bool) error {
-	rel, err := filepath.Rel(root, dir.Path)
-	if err != nil {
-		return err
-	}
-	var listing []SubPage
-	if hasListing(dir) {
-		if listing, err = s.subPages(dir, root, opts); err != nil {
+// contentPlan is what building the content folder writes.
+type contentPlan struct {
+	pages   []plannedPage
+	static  []staticFile
+	skipped []string // folders left out, relative to the content folder, parents first
+}
+
+// staticFile is a file copied into the build's static folder.
+type staticFile struct {
+	name string // relative to the static folder, slash separated
+	data []byte
+}
+
+// plannedPage is a page built from the content file src.
+type plannedPage struct {
+	src      string
+	file     string   // relative to the build folder, slash separated
+	page     Page     // everything but its Styles, Scripts and Content
+	markdown *mdFile  // set for markdown pages; others execute src as a template
+	imgDir   string   // see mdToHTML
+	assets   []string // css and js, relative to the build folder
+}
+
+// planContent works out each page and static file built from the content
+// folder, and each folder left out, without writing anything. Each folder's
+// own css and js are linked after shared, and its images copied. A folder
+// whose markdown is a draft or unreleased (and not allowed by opts) has none
+// of its own files built, as does a listed folder (one whose parent has a
+// template page) with no published date when publishing. Markdown pages are
+// linked to their neighbours in their parent folder's template page listing.
+func (ls loadedSite) planContent(layout Page, shared []string, opts Options) (contentPlan, error) {
+	var plan contentPlan
+	root := ls.content.Path
+	listings := map[string][]SubPage{}
+	err := walk(ls.content, false, func(dir *file_access.ContentDir, listed bool) error {
+		rel, err := filepath.Rel(root, dir.Path)
+		if err != nil {
 			return err
 		}
-	}
-
-	for _, sub := range dir.Dirs {
-		if err := s.buildContent(sub, root, tmpl, layout, buildDir, shared, opts, listing, hasListing(dir)); err != nil {
-			return err
+		siblings := listings[path.Dir(dir.Path)]
+		var listing []SubPage
+		if hasListing(dir) {
+			if listing, err = ls.subPages(dir, root, opts); err != nil {
+				return err
+			}
+			listings[dir.Path] = listing
 		}
-	}
 
-	skip := opts.skip(s.folderStatus(dir.Path))
-	if skip {
-		s.warnUnpublished(dir, opts.warnings())
-	}
-	if listed && opts.Publish && !skip {
-		if undated := s.undatedPage(dir); undated != "" {
-			fmt.Fprintf(opts.warnings(), "error: %s has no published date, so it wasn't published\n", undated)
-			skip = true
+		skip := opts.skip(ls.folderStatus(dir.Path))
+		if skip {
+			ls.warnUnpublished(dir, opts.warnings())
 		}
-	}
-	if skip {
-		// Remove the mirrored folders if nothing else was built in them.
-		os.Remove(filepath.Join(buildDir, rel))
-		os.Remove(filepath.Join(buildDir, "static", rel))
+		if listed && opts.Publish && !skip {
+			if undated := ls.undatedPage(dir); undated != "" {
+				fmt.Fprintf(opts.warnings(), "error: %s has no published date, so it wasn't published\n", undated)
+				skip = true
+			}
+		}
+		if skip {
+			plan.skipped = append(plan.skipped, rel)
+			return nil
+		}
+
+		assets := append([]string{}, shared...)
+		for _, f := range dir.Files {
+			ext := strings.ToLower(filepath.Ext(f))
+			isAsset := slices.Contains(assetExts, ext)
+			if !isAsset && !slices.Contains(ImageExts, ext) {
+				continue
+			}
+			data, err := fs.ReadFile(ls, f)
+			if err != nil {
+				return fmt.Errorf("failed to read %s: %w", f, err)
+			}
+			if len(data) == 0 {
+				continue
+			}
+			name := path.Join(filepath.ToSlash(rel), path.Base(f))
+			plan.static = append(plan.static, staticFile{name: name, data: data})
+			if isAsset {
+				assets = append(assets, "static/"+name)
+			}
+		}
+
+		for _, f := range dir.Files {
+			ext := strings.ToLower(filepath.Ext(f))
+			if ext != ".md" && ext != ".html" {
+				continue
+			}
+			stem := strings.TrimSuffix(f, filepath.Ext(f))
+			// A template page's intro is built into it, not as its own page.
+			if ext == ".md" && slices.Contains(dir.Files, stem+".html") {
+				continue
+			}
+			file, link, err := ls.pagePath(f, root, opts.Publish)
+			if err != nil {
+				return err
+			}
+			p := plannedPage{src: f, file: file, page: layout, imgDir: rel, assets: assets}
+			p.page.Root = rootFor(file)
+			if ext == ".md" {
+				md := ls.md[f]
+				p.markdown = &md
+				p.page.Previous, p.page.Next = adjacent(siblings, link)
+			} else {
+				p.page.SubPages = listing
+				if intro, ok := ls.md[stem+".md"]; ok {
+					p.page.Meta = intro.Meta
+					p.page.Intro = template.HTML(mdToHTML(intro.Body, p.page.Root, rel, intro.Meta.TOC))
+				}
+			}
+			plan.pages = append(plan.pages, p)
+
+			// The tags page is built again as each tag's own page.
+			if rel == tagsDir && strings.EqualFold(filepath.Base(f), tagsDir+".html") {
+				for _, tag := range layout.Tags {
+					t := plannedPage{src: f, file: tag.file, page: layout, assets: assets}
+					t.page.Root, t.page.Tag = rootFor(tag.file), &tag
+					plan.pages = append(plan.pages, t)
+				}
+			}
+		}
 		return nil
-	}
+	})
+	return plan, err
+}
 
-	pageAssets := append([]string{}, shared...)
-	for _, f := range dir.Files {
-		ext := strings.ToLower(filepath.Ext(f))
-		isAsset := slices.Contains(assetExts, ext)
-		if !isAsset && !slices.Contains(ImageExts, ext) {
-			continue
-		}
-		name := filepath.Join(rel, filepath.Base(f))
-		assetBytes, err := fs.ReadFile(s, f)
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", f, err)
-		}
-		if len(assetBytes) == 0 {
-			continue
-		}
-		if err := os.WriteFile(filepath.Join(buildDir, "static", name), assetBytes, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", name, err)
-		}
-		if isAsset {
-			pageAssets = append(pageAssets, "static/"+filepath.ToSlash(name))
+// writeContent writes plan's static files and pages into buildDir, then
+// removes the mirrored folders of each folder it left out, if nothing else
+// was built in them.
+func (ls loadedSite) writeContent(plan contentPlan, buildDir string) error {
+	for _, f := range plan.static {
+		if err := os.WriteFile(filepath.Join(buildDir, "static", filepath.FromSlash(f.name)), f.data, 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", f.name, err)
 		}
 	}
-
-	for _, f := range dir.Files {
-		ext := strings.ToLower(filepath.Ext(f))
-		if ext != ".md" && ext != ".html" {
-			continue
-		}
-		stem := strings.TrimSuffix(f, filepath.Ext(f))
-		// A template page's intro is built into it, not as its own page.
-		if ext == ".md" && slices.Contains(dir.Files, stem+".html") {
-			continue
-		}
-		file, link, err := s.pagePath(f, root, opts.Publish)
-		if err != nil {
-			return err
-		}
-		out := filepath.Join(buildDir, file)
+	for _, p := range plan.pages {
+		out := filepath.Join(buildDir, filepath.FromSlash(p.file))
 		if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
 			return fmt.Errorf("failed to create %s: %w", filepath.Dir(out), err)
 		}
-		page := layout
-		page.Root = rootFor(file)
-		if ext == ".md" {
-			page.Previous, page.Next = adjacent(siblings, link)
-			err = writeMarkdownPage(tmpl, page, s.md[f], out, rel, pageAssets)
+		var err error
+		if p.markdown != nil {
+			err = writeMarkdownPage(ls.tmpl, p.page, *p.markdown, out, p.imgDir, p.assets)
 		} else {
-			if intro, ok := s.md[stem+".md"]; ok {
-				page.Meta = intro.Meta
-				page.Intro = template.HTML(mdToHTML(intro.Body, page.Root, rel, intro.Meta.TOC))
-			}
-			err = s.writeTemplatePage(tmpl, page, listing, f, out, pageAssets)
+			err = ls.writeTemplatePage(ls.tmpl, p.page, p.src, out, p.assets)
 		}
 		if err != nil {
 			return err
 		}
-		if rel == tagsDir && strings.EqualFold(filepath.Base(f), tagsDir+".html") {
-			if err := s.writeTagPages(tmpl, layout, f, buildDir, pageAssets); err != nil {
-				return err
-			}
-		}
+	}
+	// Subfolders come after their parents, so are removed first.
+	for _, rel := range slices.Backward(plan.skipped) {
+		os.Remove(filepath.Join(buildDir, rel))
+		os.Remove(filepath.Join(buildDir, "static", rel))
 	}
 	return nil
 }
@@ -467,31 +526,14 @@ func fileExists(fsys fs.FS, name string) bool {
 	return err == nil
 }
 
-// writeTagPages renders the tags template page at tmplPath again for each of
-// layout's tags, as that tag's own page listing the pages that have it.
-func (s source) writeTagPages(tmpl *template.Template, layout Page, tmplPath, buildDir string, assets []string) error {
-	for _, tag := range layout.Tags {
-		out := filepath.Join(buildDir, filepath.FromSlash(tag.file))
-		if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
-			return fmt.Errorf("failed to create %s: %w", filepath.Dir(out), err)
-		}
-		page := layout
-		page.Root, page.Tag = rootFor(tag.file), &tag
-		if err := s.writeTemplatePage(tmpl, page, nil, tmplPath, out, assets); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Build generates the site from srcDir into outDir, returning its build
-// version.
-func Build(srcDir, outDir string, opts Options) (string, error) {
-	if _, err := os.Stat(srcDir); err != nil {
+// Build generates the site in the folder site into site/build, returning its
+// build version.
+func Build(site string, opts Options) (string, error) {
+	if _, err := os.Stat(site); err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
 	version := newVersion()
-	if err := buildSite(os.DirFS(srcDir), outDir, opts, version); err != nil {
+	if err := buildSite(os.DirFS(site), site, opts, version); err != nil {
 		return "", err
 	}
 	return version, nil
@@ -506,30 +548,52 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 	if info, err := os.Stat(outDir); err != nil || !info.IsDir() {
 		return fmt.Errorf("invalid output directory: %s", outDir)
 	}
-
-	if !fileExists(fsys, "index.html") {
-		return fmt.Errorf("missing index.html in the site folder")
-	}
-	if !fileExists(fsys, "index.md") {
-		return fmt.Errorf("missing index.md in the site folder")
-	}
-
-	content, err := file_access.CrawlContent(fsys, "content")
-	if err != nil {
-		return err
-	}
 	now := opts.Now
 	if now.IsZero() {
 		now = time.Now()
 	}
-	s, err := readSource(fsys, content, now)
+	ls, err := loadSite(fsys, now)
 	if err != nil {
 		return err
+	}
+	layout, err := ls.layout(opts, version)
+	if err != nil {
+		return err
+	}
+	return ls.write(outDir, layout, opts)
+}
+
+// loadedSite is a site's source folder, read and parsed ready to build.
+type loadedSite struct {
+	source
+	content *file_access.ContentDir
+	prefs   Preferences
+	tmpl    *template.Template // the layout and structure templates
+	index   mdFile             // the home page
+}
+
+// loadSite reads and parses the site in the source folder fsys, marking
+// pages published after now as unreleased.
+func loadSite(fsys fs.FS, now time.Time) (loadedSite, error) {
+	if !fileExists(fsys, "index.html") {
+		return loadedSite{}, fmt.Errorf("missing index.html in the site folder")
+	}
+	if !fileExists(fsys, "index.md") {
+		return loadedSite{}, fmt.Errorf("missing index.md in the site folder")
+	}
+
+	content, err := file_access.CrawlContent(fsys, "content")
+	if err != nil {
+		return loadedSite{}, err
+	}
+	s, err := readSource(fsys, content, now)
+	if err != nil {
+		return loadedSite{}, err
 	}
 
 	prefs, err := readPreferences(fsys, "preferences.yaml")
 	if err != nil {
-		return err
+		return loadedSite{}, err
 	}
 
 	templates := []string{
@@ -553,20 +617,26 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 	}
 	tmpl, err := template.ParseFS(fsys, templates...)
 	if err != nil {
-		return fmt.Errorf("failed to parse templates: %w", err)
+		return loadedSite{}, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
-	replacements := []Replacement{
-		{ID: "content", Path: "index.md"},
-		{ID: "header", Path: "structure/header/header.html"},
-		{ID: "footer", Path: "structure/footer/footer.html"},
-		{ID: "intro-sidebar", Path: "structure/intro-sidebar/intro-sidebar.html"},
-		{ID: "recent-blogs", Path: "structure/recent-blogs/recent-blogs.html"},
+	indexBytes, err := fs.ReadFile(fsys, "index.md")
+	if err != nil {
+		return loadedSite{}, fmt.Errorf("failed to read index.md: %w", err)
 	}
+	meta, body := parseFrontMatter(indexBytes)
+	meta.Unreleased = meta.IsUnreleased(now)
+	return loadedSite{source: s, content: content, prefs: prefs, tmpl: tmpl, index: mdFile{Meta: meta, Body: body}}, nil
+}
 
+// layout returns the page data shared by every page of ls, marked with
+// version: its nav links, tags and recent pages, leaving out any opts
+// doesn't allow.
+func (ls loadedSite) layout(opts Options, version string) (Page, error) {
+	content, prefs := ls.content, ls.prefs
 	var navLinks []NavLink
 	for _, name := range prefs.navLinkNames() {
-		srcs, _ := fs.Glob(fsys, path.Join(content.Path, name, name+".*"))
+		srcs, _ := fs.Glob(ls, path.Join(content.Path, name, name+".*"))
 		srcs = slices.DeleteFunc(srcs, func(s string) bool {
 			ext := strings.ToLower(filepath.Ext(s))
 			return ext != ".md" && ext != ".html"
@@ -576,13 +646,13 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 			continue
 		}
 		src := srcs[0]
-		draft, unreleased := s.folderStatus(path.Dir(src))
+		draft, unreleased := ls.folderStatus(path.Dir(src))
 		if opts.skip(draft, unreleased) {
 			continue
 		}
-		_, link, err := s.pagePath(src, content.Path, opts.Publish)
+		_, link, err := ls.pagePath(src, content.Path, opts.Publish)
 		if err != nil {
-			return err
+			return Page{}, err
 		}
 		navLinks = append(navLinks, NavLink{Name: strings.ToUpper(name[:1]) + name[1:], Link: link, Draft: draft, Unreleased: unreleased})
 	}
@@ -607,13 +677,20 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 		},
 		Root: rootFor("index.html"),
 	}
-	if layout.Tags, err = s.collectTags(content, opts); err != nil {
-		return err
+	var err error
+	if layout.Tags, err = ls.collectTags(content, opts); err != nil {
+		return Page{}, err
 	}
-	if layout.Site.RecentBlogs, err = s.recentPages(content, opts, 3); err != nil {
-		return err
+	if layout.Site.RecentBlogs, err = ls.recentPages(content, opts, 3); err != nil {
+		return Page{}, err
 	}
+	return layout, nil
+}
 
+// write clears outDir/build, keeping any git repo, and builds ls into it
+// with layout.
+func (ls loadedSite) write(outDir string, layout Page, opts Options) error {
+	content := ls.content
 	// Clear the previous build, keeping any git repo it was published from.
 	buildDir := filepath.Join(outDir, "build")
 	entries, err := os.ReadDir(buildDir)
@@ -636,8 +713,8 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 		return fmt.Errorf("failed to write .nojekyll: %w", err)
 	}
 	// The site's own static files (images, logo) are copied as is.
-	if fileExists(fsys, "static") {
-		staticFS, err := fs.Sub(fsys, "static")
+	if fileExists(ls, "static") {
+		staticFS, err := fs.Sub(ls, "static")
 		if err == nil {
 			err = os.CopyFS(filepath.Join(buildDir, "static"), staticFS)
 		}
@@ -651,12 +728,19 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 		}
 	}
 
+	replacements := []Replacement{
+		{ID: "content", Path: "index.md"},
+		{ID: "header", Path: "structure/header/header.html"},
+		{ID: "footer", Path: "structure/footer/footer.html"},
+		{ID: "intro-sidebar", Path: "structure/intro-sidebar/intro-sidebar.html"},
+		{ID: "recent-blogs", Path: "structure/recent-blogs/recent-blogs.html"},
+	}
 	var shared []string
 	for _, r := range replacements {
 		base := strings.TrimSuffix(r.Path, filepath.Ext(r.Path))
 		for _, ext := range assetExts {
 			name := filepath.Base(base) + ext
-			assetBytes, err := fs.ReadFile(fsys, base+ext)
+			assetBytes, err := fs.ReadFile(ls, base+ext)
 			if os.IsNotExist(err) || (err == nil && len(assetBytes) == 0) {
 				continue
 			}
@@ -664,7 +748,7 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 				return fmt.Errorf("failed to read %s: %w", name, err)
 			}
 			if ext == ".css" {
-				if assetBytes, err = fillCSS(assetBytes, name, prefs); err != nil {
+				if assetBytes, err = fillCSS(assetBytes, name, ls.prefs); err != nil {
 					return err
 				}
 			}
@@ -675,15 +759,13 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 		}
 	}
 
-	indexBytes, err := fs.ReadFile(fsys, "index.md")
-	if err != nil {
-		return fmt.Errorf("failed to read index.md: %w", err)
-	}
-	meta, body := parseFrontMatter(indexBytes)
-	meta.Unreleased = meta.IsUnreleased(now)
-	if err := writeMarkdownPage(tmpl, layout, mdFile{Meta: meta, Body: body}, filepath.Join(buildDir, "index.html"), "", shared); err != nil {
+	if err := writeMarkdownPage(ls.tmpl, layout, ls.index, filepath.Join(buildDir, "index.html"), "", shared); err != nil {
 		return err
 	}
 
-	return s.buildContent(content, content.Path, tmpl, layout, buildDir, shared, opts, nil, false)
+	plan, err := ls.planContent(layout, shared, opts)
+	if err != nil {
+		return err
+	}
+	return ls.writeContent(plan, buildDir)
 }
