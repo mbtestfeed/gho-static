@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -118,14 +119,7 @@ func PostFolder(name string, date time.Time) string {
 // static/img too. Its home page is readme. A clean site has a single empty
 // post instead of the examples, and its pages have only front matter.
 func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme string, clean bool) error {
-	files := map[string]string{}
-	starterFiles, _ := fs.Sub(starter, "starter")
-	if err := addFiles(files, starterFiles, ""); err != nil {
-		return fmt.Errorf("failed to read starter files: %w", err)
-	}
-	if err := addFiles(files, images, "static/img/"); err != nil {
-		return fmt.Errorf("failed to read images: %w", err)
-	}
+	custom := map[string]string{}
 	for _, img := range []struct {
 		name       string
 		path       *string
@@ -146,16 +140,34 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 			return fmt.Errorf("can't copy %s %s into static/img: %w", img.name, *img.path, err)
 		}
 		*img.path = "static/img/" + filepath.Base(*img.path)
-		files[*img.path] = string(b)
+		custom[*img.path] = string(b)
 	}
-	prefsYAML, err := yaml.Marshal(prefs)
+	files, err := siteFiles(prefs, images, readme, clean, time.Now())
 	if err != nil {
-		return fmt.Errorf("failed to encode preferences: %w", err)
+		return err
 	}
+	maps.Copy(files, custom)
 	if err := newFolder(dir); err != nil {
 		return err
 	}
-	now := time.Now()
+	return writeFiles(dir, files)
+}
+
+// siteFiles returns the files of a starter site with the given preferences,
+// generated at now, by slash separated path. See Generate.
+func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean bool, now time.Time) (map[string]string, error) {
+	files := map[string]string{}
+	starterFiles, _ := fs.Sub(starter, "starter")
+	if err := addFiles(files, starterFiles, ""); err != nil {
+		return nil, fmt.Errorf("failed to read starter files: %w", err)
+	}
+	if err := addFiles(files, images, "static/img/"); err != nil {
+		return nil, fmt.Errorf("failed to read images: %w", err)
+	}
+	prefsYAML, err := yaml.Marshal(prefs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode preferences: %w", err)
+	}
 	files["preferences.yaml"] = string(prefsYAML)
 	if clean {
 		files["index.md"] = "---\ntitle:\n---\n\n" + cleanIndexText
@@ -164,7 +176,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 		}
 		addPage(files, "content/blogs/"+PostFolder("first_post", now)+"/post", ".md", contentPage("first_post", now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
 		addListing(files, "content/blogs/blogs", "blogs")
-		return writeFiles(dir, files)
+		return files, nil
 	}
 	files["index.md"] = "---\ntitle:\n---\n\n" + readme
 	// Example pages use every front matter field, so they show what's possible.
@@ -184,7 +196,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 	}
 	files["content/contact/contact.md"] += contactText
 	addListing(files, "content/blogs/blogs", "blogs")
-	return writeFiles(dir, files)
+	return files, nil
 }
 
 // GeneratePage creates the folder dir and writes a draft content page into
@@ -236,16 +248,7 @@ func DatePost(mdPath string, date time.Time) error {
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", mdPath, err)
 	}
-	md := strings.ReplaceAll(string(mdBytes), "\r\n", "\n")
-	line := "published: " + date.Format("2006-01-02") + "\n"
-	if end := strings.Index(md[min(4, len(md)):], "\n---"); strings.HasPrefix(md, "---\n") && end != -1 {
-		// Add as the last line, overriding any invalid published value.
-		i := 4 + end + 1
-		md = md[:i] + line + md[i:]
-	} else {
-		md = "---\n" + line + "---\n\n" + md
-	}
-	if err := os.WriteFile(mdPath, []byte(md), 0644); err != nil {
+	if err := os.WriteFile(mdPath, []byte(setPublished(string(mdBytes), date)), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", mdPath, err)
 	}
 
@@ -257,6 +260,19 @@ func DatePost(mdPath string, date time.Time) error {
 	return nil
 }
 
+// setPublished returns md with its published date set to date in its front
+// matter, adding front matter if it has none.
+func setPublished(md string, date time.Time) string {
+	md = strings.ReplaceAll(md, "\r\n", "\n")
+	line := "published: " + date.Format("2006-01-02") + "\n"
+	if end := strings.Index(md[min(4, len(md)):], "\n---"); strings.HasPrefix(md, "---\n") && end != -1 {
+		// Add as the last line, overriding any invalid published value.
+		i := 4 + end + 1
+		return md[:i] + line + md[i:]
+	}
+	return "---\n" + line + "---\n\n" + md
+}
+
 // PublishDraft removes the draft line from the front matter of the markdown
 // page at mdPath.
 func PublishDraft(mdPath string) error {
@@ -264,21 +280,30 @@ func PublishDraft(mdPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", mdPath, err)
 	}
-	md := strings.ReplaceAll(string(mdBytes), "\r\n", "\n")
-	end := strings.Index(md[min(4, len(md)):], "\n---")
-	if !strings.HasPrefix(md, "---\n") || end == -1 {
+	md := removeDraft(string(mdBytes))
+	if md == string(mdBytes) {
 		return nil
 	}
-	header := strings.Split(md[4:4+end], "\n")
-	header = slices.DeleteFunc(header, func(line string) bool {
-		key, _, _ := strings.Cut(line, ":")
-		return strings.TrimSpace(key) == "draft"
-	})
-	md = "---\n" + strings.Join(header, "\n") + md[4+end:]
 	if err := os.WriteFile(mdPath, []byte(md), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", mdPath, err)
 	}
 	return nil
+}
+
+// removeDraft returns md without the draft line in its front matter, or
+// unchanged if it has no front matter.
+func removeDraft(md string) string {
+	lf := strings.ReplaceAll(md, "\r\n", "\n")
+	end := strings.Index(lf[min(4, len(lf)):], "\n---")
+	if !strings.HasPrefix(lf, "---\n") || end == -1 {
+		return md
+	}
+	header := strings.Split(lf[4:4+end], "\n")
+	header = slices.DeleteFunc(header, func(line string) bool {
+		key, _, _ := strings.Cut(line, ":")
+		return strings.TrimSpace(key) == "draft"
+	})
+	return "---\n" + strings.Join(header, "\n") + lf[4+end:]
 }
 
 // addFiles adds each file in fsys to files, at its path with prefix added.
