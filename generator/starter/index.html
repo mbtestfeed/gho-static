@@ -37,10 +37,12 @@
     {{- if or .Meta.Draft .Meta.Unreleased}}
         <div class="warnings">
         {{- if .Meta.Draft}}
-            <span class="warning-draft">DRAFT</span>
+            <div class="warning-title">DRAFT</div>
+            <div>This page is a draft, so it won't be published or deployed.</div>
         {{- end}}
         {{- if .Meta.Unreleased}}
-            <span class="warning-unreleased">UNRELEASED UNTIL: {{.Meta.ReleaseLine}}</span>
+            <div class="warning-title">UNRELEASED</div>
+            <div>This page's published date is {{.Meta.ReleaseLine}}, so it won't be published or deployed before then.</div>
         {{- end}}
         </div>
     {{- end}}{{template "pager" .}}{{.Content}}{{template "pager" .}}</div>

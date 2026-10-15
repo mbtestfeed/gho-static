@@ -31,20 +31,19 @@ Flags:
                           is content/<name>/<post>, adds a draft post.md in a
                           new content/<name>/YYYYMMDD_<post> folder inside
                           <site folder>, e.g. gho-static --generate content/news mysite
-                          Builds afterwards with drafts and unreleased pages
-                          included (-d -u).
-  -c, --clean             With -g, generate markdown files with only their front
+                          Builds afterwards.
+  -c, --clean            With -g, generate markdown files with only their front
                           matter. A new site is named after its folder, with
                           one empty post instead of the example posts, and no
                           intro sidebar image, name or links.
-  -d, --build-drafts      Also build pages whose folder contains a markdown file
-                          marked "draft: true" (shown with a DRAFT warning).
-  -u, --build-unreleased  Also build pages whose published date is in the future
-                          (shown with an UNRELEASED warning).
+  --preview-publish       Build without drafts and unreleased pages, as
+                          publishing does, but keep the links working locally.
+                          Otherwise they're built, with a warning on each.
   -p, --publish           Build for publishing: each page is written as
                           folder/index.html and linked by folder. Drafts and
-                          unreleased pages are always skipped, overriding -d/-u.
-  -y, --yes               With -g, use the default preferences without asking.
+                          unreleased pages are left out. Can't be used with
+                          --preview-publish.
+  -y, --yes               With -g, don't ask for a deployment method.
                           With --deploy, fail instead of asking for anything
                           that isn't set up.
   --drafts                Go through each draft page in <site folder>, asking
@@ -60,11 +59,11 @@ Flags:
                           it first if it doesn't exist. github-pages makes it a
                           git repo, with --repo as its remote. Asks for the
                           method (and repo) if not given. With -g, used instead
-                          of asking after the preferences.
+                          of asking.
   --repo <url>            With --deployment-method github-pages, the GitHub
                           repo to push the build folder to.
 
-Single-letter flags can be combined, e.g. -du.
+Single-letter flags can be combined, e.g. -cy.
 `
 
 // Mode is what a Command does.
@@ -96,7 +95,7 @@ type Command struct {
 }
 
 // Parse reads args (without the program name) into a Command, asking for
-// the starter site's preferences when generating a site.
+// anything missing that it needs.
 func Parse(args []string) (Command, error) {
 	flags, positional := utils.ParseArgs(args)
 
@@ -121,10 +120,8 @@ func Parse(args []string) (Command, error) {
 		case "repo":
 			cmd.Repo, repoGiven = f.Val, true
 			continue
-		case "d", "build-drafts":
-			cmd.Options.BuildDrafts = true
-		case "u", "build-unreleased":
-			cmd.Options.BuildUnreleased = true
+		case "preview-publish":
+			cmd.Options.Preview = true
 		case "p", "publish":
 			cmd.Options.Publish = true
 		case "y", "yes":
@@ -144,8 +141,8 @@ func Parse(args []string) (Command, error) {
 			positional = append(positional, f.Val)
 		}
 	}
-	if cmd.Options.Publish {
-		cmd.Options.BuildDrafts, cmd.Options.BuildUnreleased = false, false
+	if cmd.Options.Publish && cmd.Options.Preview {
+		return cmd, fmt.Errorf("--preview-publish and --publish can't be used together: --preview-publish previews the published site with links that work locally, while --publish builds it for deploying. Rerun with just one of them.")
 	}
 
 	// The site folder is the first positional arg not used as the -g path.
@@ -199,7 +196,6 @@ func Parse(args []string) (Command, error) {
 		return cmd, nil
 	}
 
-	cmd.Options.BuildDrafts, cmd.Options.BuildUnreleased = true, true
 	// content/<name> makes a page, content/<name>/<post> a dated post,
 	// both inside the site folder.
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(cmd.GenPath)), "/")
@@ -223,11 +219,6 @@ func Parse(args []string) (Command, error) {
 				cmd.Prefs.SocialLinks = append(cmd.Prefs.SocialLinks, gho_static.SocialLink{Name: l.Name})
 			}
 		}
-		if useDefaults {
-			fmt.Println("Using the default preferences (--yes). You can change these later in preferences.yaml.")
-		} else {
-			cmd.Prefs = askPreferences(r, cmd.Prefs)
-		}
 		chooseMethod(r, !useDefaults)
 		return cmd, nil
 	}
@@ -250,7 +241,17 @@ func Parse(args []string) (Command, error) {
 	// Offer a menu link for a new first-level folder, whether it's the page
 	// itself or the parent of a new post.
 	if _, err := os.Stat(filepath.Join(cmd.Site, "content", parts[1])); os.IsNotExist(err) {
-		if useDefaults || (Interactive() && askNavLink(bufio.NewReader(os.Stdin), parts[1])) {
+		r := bufio.NewReader(os.Stdin)
+		// A new post's parent is a new collection, so check its name first.
+		if isPost && !useDefaults {
+			if !Interactive() {
+				return cmd, fmt.Errorf("%s would add a new collection, %s, and there's no one to ask whether that's intended. Rerun with --yes to add it.", cmd.GenPath, parts[1])
+			}
+			if !askNewCollection(r, parts[1]) {
+				return cmd, fmt.Errorf("%s wasn't created.", cmd.GenPath)
+			}
+		}
+		if useDefaults || (Interactive() && askNavLink(r, parts[1])) {
 			cmd.NavLink = parts[1]
 		}
 	}

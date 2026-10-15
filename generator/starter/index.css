@@ -74,6 +74,12 @@ p, h1, h2, h3, h4, h5, h6 {
     margin-top: 1em;
 }
 
+/* Keeps markdown lists' bullets and numbers inside the content. Template
+   lists have a class, and are styled on their own. */
+#content :is(ul, ol):not([class]) {
+    padding-left: 20px;
+}
+
 .byline {
     display: flex;
     justify-content: space-between;
@@ -86,19 +92,18 @@ p, h1, h2, h3, h4, h5, h6 {
 }
 
 .warnings {
-    display: flex;
-    align-items: baseline;
-    gap: 20px;
     margin-bottom: 20px;
-    color: red;
+    padding: 10px 15px;
+    border: 2px solid darkred;
+    border-radius: 10px;
+    background-color: #ffcccc;
+    color: #000000;
 }
 
-.warning-draft {
-    font-size: 42px;
-}
-
-.warning-unreleased {
-    font-size: 30px;
+.warning-title {
+    font-size: 1.4em;
+    font-weight: bold;
+    color: darkred;
 }
 
 /* Tag pills: 0.7em text centred in a 1em (of the surrounding text) high
@@ -151,7 +156,7 @@ a.tag:visited {
 @media (width <= 1080px) {
     #content {
         width: auto;
-        margin: calc(70px + 30px) 15px 30px;
+        margin: calc(70px + 30px) 20px 30px;
     }
 
     .byline {

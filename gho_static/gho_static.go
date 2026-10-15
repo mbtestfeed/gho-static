@@ -204,9 +204,8 @@ func writePage(tmpl *template.Template, page Page, out string, assets []string) 
 
 // Options controls which content is built.
 type Options struct {
-	BuildDrafts     bool
-	BuildUnreleased bool
-	Publish         bool // write pages as folder/index.html and link by folder
+	Preview bool // leave out drafts and unreleased pages, as publishing does, but keep local links
+	Publish bool // leave out drafts and unreleased pages, and write pages as folder/index.html linked by folder
 }
 
 // PagePath returns where the page built from src (a .md or .html file under
@@ -252,7 +251,7 @@ func rootFor(file string) string {
 
 // skip reports whether a folder with the given status should not be built.
 func (o Options) skip(draft, unreleased bool) bool {
-	return (draft && !o.BuildDrafts) || (unreleased && !o.BuildUnreleased)
+	return (draft || unreleased) && (o.Preview || o.Publish)
 }
 
 // folderStatus reports whether any markdown file directly in dir is a draft
@@ -301,7 +300,7 @@ func warnUnpublished(dir *file_access.ContentDir) error {
 			reasons = append(reasons, "has a publish date in the future ("+meta.ReleaseLine()+")")
 		}
 		if len(reasons) > 0 {
-			fmt.Fprintf(os.Stderr, "%swarning: %s %s, so it wasn't published%s\n", warning, f, strings.Join(reasons, " and "), reset)
+			fmt.Fprintf(os.Stderr, "%swarning: %s %s, so it won't be published or deployed%s\n", warning, f, strings.Join(reasons, " and "), reset)
 		}
 	}
 	return nil
@@ -338,7 +337,7 @@ func buildContent(dir *file_access.ContentDir, root string, tmpl *template.Templ
 		return err
 	}
 	skip := opts.skip(draft, unreleased)
-	if skip && opts.Publish {
+	if skip {
 		if err := warnUnpublished(dir); err != nil {
 			return err
 		}
@@ -485,13 +484,14 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		filepath.Join(srcDir, "structure", "footer", "footer.html"),
 	}
 	// The sidebars are optional, so sites made before them still build, and
-	// can be turned off in preferences.
+	// can be turned off in preferences. Recent blogs is also left out of
+	// sites without a blogs folder.
 	for _, s := range []struct {
 		name string
 		show bool
 	}{
 		{"intro-sidebar", prefs.ShowIntroSidebar},
-		{"recent-blogs", prefs.ShowRecentBlogsSidebar},
+		{"recent-blogs", prefs.ShowRecentBlogsSidebar && fileExists(filepath.Join(content.Path, "blogs"))},
 	} {
 		if path := filepath.Join(srcDir, "structure", s.name, s.name+".html"); s.show && fileExists(path) {
 			templates = append(templates, path)
@@ -518,7 +518,8 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 			return ext != ".md" && ext != ".html"
 		})
 		if len(srcs) == 0 {
-			return fmt.Errorf("no page found for nav link %q", name)
+			fmt.Fprintf(os.Stderr, "%swarning: no page found for nav link %q, so it was left out of the menu%s\n", warning, name, reset)
+			continue
 		}
 		src := srcs[0]
 		draft, unreleased, err := folderStatus(filepath.Dir(src))

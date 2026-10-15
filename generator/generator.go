@@ -113,9 +113,9 @@ func PostFolder(name string, date time.Time) string {
 // Generate writes a starter site with the given preferences into dir, with
 // images copied into static/img, refusing to overwrite existing files. A
 // logo or favicon other than the default is copied from its path into
-// static/img too. A clean site has a single empty post instead of the
-// examples, and its pages have only front matter.
-func Generate(dir string, prefs gho_static.Preferences, images fs.FS, clean bool) error {
+// static/img too. Its home page is readme. A clean site has a single empty
+// post instead of the examples, and its pages have only front matter.
+func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme string, clean bool) error {
 	files := map[string]string{}
 	starterFiles, _ := fs.Sub(starter, "starter")
 	if err := addFiles(files, starterFiles, ""); err != nil {
@@ -164,6 +164,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, clean bool
 		addPage(files, "content/blogs/blogs", ".html", listingPage("blogs"), listingCSS)
 		return writeFiles(dir, files)
 	}
+	files["index.md"] = "---\ntitle:\n---\n\n" + readme
 	// Example pages use every front matter field, so they show what's possible.
 	author := prefs.DefaultAuthor
 	if author == "" {

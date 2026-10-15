@@ -21,6 +21,11 @@ import (
 //go:embed img
 var img embed.FS
 
+// readme is the home page of each generated site, other than clean ones.
+//
+//go:embed README.md
+var readme string
+
 // fileLink returns a file:// URL for path.
 func fileLink(path string) string {
 	if abs, err := filepath.Abs(path); err == nil {
@@ -116,7 +121,7 @@ func main() {
 			fail(err)
 		}
 		images, _ := fs.Sub(img, "img")
-		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, cmd.Clean)
+		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, readme, cmd.Clean)
 	case cli.GeneratePage, cli.GeneratePost:
 		var prefs gho_static.Preferences
 		if prefs, err = gho_static.ReadPreferences(prefsPath); err != nil {
@@ -184,6 +189,7 @@ func main() {
 			kind = "clean static site"
 		}
 		fmt.Printf("Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, cli.Link+fileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+cli.Reset)
+		fmt.Printf("Basic site preferences can be edited at any time in %s.\n", filepath.Join(cmd.GenPath, "preferences.yaml"))
 		return
 	}
 

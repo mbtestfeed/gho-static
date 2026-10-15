@@ -11,13 +11,5 @@
 }
 
 .blog-links .warnings {
-    margin-bottom: 0;
-}
-
-.blog-links .warning-unreleased {
-    font-size: 1em;
-}
-
-.blog-links .warning-draft {
-    font-size: calc(1em + 2px);
+    margin: 5px 0 0;
 }
