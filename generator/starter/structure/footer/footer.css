@@ -28,7 +28,7 @@ body {
     font-weight: bold;
 }
 
-@media (width < 1080px) {
+@media (width <= 1080px) {
     .footer-inner {
         flex-direction: column;
     }

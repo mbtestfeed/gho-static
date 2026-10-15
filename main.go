@@ -146,7 +146,7 @@ func main() {
 		if version, err = deployment.Deploy(cmd.Site, cmd.Method, cmd.Repo); err != nil {
 			fail(err)
 		}
-		fmt.Printf("Deployed %s.\n", cmd.Site)
+		fmt.Printf("Deployed %s (it may take a minute or two to update on GitHub).\n", cmd.Site)
 		printVersion(version)
 		return
 	}

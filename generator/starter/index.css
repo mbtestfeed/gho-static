@@ -132,7 +132,7 @@ a.tag:visited {
 /* Wider screens put the sidebars either side of the content. The content
    keeps its width, only narrowing to leave each sidebar its 150px (plus
    20px either side), and stays centred between equal side columns. */
-@media (width >= 1080px) {
+@media (width > 1080px) {
     #main {
         display: grid;
         grid-template-columns: 1fr min(1500px, 60%, 100% - 2 * (150px + 40px)) 1fr;
@@ -148,9 +148,17 @@ a.tag:visited {
     }
 }
 
-@media (width < 1080px) {
+@media (width <= 1080px) {
     #content {
         width: auto;
         margin: calc(70px + 30px) 15px 30px;
+    }
+
+    .byline {
+        flex-direction: column;
+    }
+
+    .byline-date {
+        margin-left: 0;
     }
 }
