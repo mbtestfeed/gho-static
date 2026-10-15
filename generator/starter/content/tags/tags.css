@@ -1,9 +1,20 @@
 .tag-links {
     list-style: none;
+    margin-top: 2em;
 }
 
 .tag-links li {
     margin-bottom: 20px;
+}
+
+.tag-index {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 1.5em;
+}
+
+.tag-index li {
+    white-space: nowrap;
 }
 
 .tag-date {

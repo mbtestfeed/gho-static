@@ -24,8 +24,8 @@
 {{- end}}
 </ul>
 {{- else}}
-<h1>Tags</h1>
-<ul class="tag-links">
+{{.Intro}}
+<ul class="tag-links tag-index">
 {{- range .Tags}}
     <li><a class="tag" href="{{$.Root}}{{.Link}}">{{.Name}}</a> ({{len .Pages}})</li>
 {{- end}}

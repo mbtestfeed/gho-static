@@ -21,8 +21,8 @@ import (
 //go:embed all:starter
 var starter embed.FS
 
-// listingPageTemplate is a page listing the posts in its folder, filled
-// with its title.
+// listingPageTemplate is a page listing the posts in its folder, after its
+// markdown intro.
 //
 //go:embed templates/listing.html
 var listingPageTemplate string
@@ -100,9 +100,11 @@ var examplePosts = []pageMeta{
 // cleanIndexText is a clean site's home page body.
 const cleanIndexText = "You've built a static website in 'Clean' mode. There's nothing here - you're going to need to fill this out. Update your basic preferences in preferences.yaml, and add new pages using <code>gho-static --generate content/[new_page_name]</code> or new blogs using <code>gho-static --generate content/blogs/[my_new_blog_title]</code>. Please refer to mbtestfeed.github.io for additional documentation.\n"
 
-// listingPage returns the contents of a post listing page titled after name.
-func listingPage(name string) string {
-	return fmt.Sprintf(listingPageTemplate, titleFor(name))
+// addListing adds a post listing page at path (slash separated, without
+// extension) to files, with a markdown intro titled after name.
+func addListing(files map[string]string, path, name string) {
+	addPage(files, path, ".html", listingPageTemplate, listingCSS)
+	files[path+".md"] = "# " + titleFor(name) + "\n"
 }
 
 // PostFolder returns the folder name for post name published on date.
@@ -161,7 +163,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 			addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
 		}
 		addPage(files, "content/blogs/"+PostFolder("first_post", now)+"/post", ".md", contentPage("first_post", now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
-		addPage(files, "content/blogs/blogs", ".html", listingPage("blogs"), listingCSS)
+		addListing(files, "content/blogs/blogs", "blogs")
 		return writeFiles(dir, files)
 	}
 	files["index.md"] = "---\ntitle:\n---\n\n" + readme
@@ -181,7 +183,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 		addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, meta), "")
 	}
 	files["content/contact/contact.md"] += contactText
-	addPage(files, "content/blogs/blogs", ".html", listingPage("blogs"), listingCSS)
+	addListing(files, "content/blogs/blogs", "blogs")
 	return writeFiles(dir, files)
 }
 
@@ -207,7 +209,7 @@ func GeneratePost(dir, name, author string, clean bool) error {
 	files := map[string]string{}
 	if _, err := os.Stat(parent); os.IsNotExist(err) {
 		parentName := filepath.Base(parent)
-		addPage(files, parentName, ".html", listingPage(parentName), listingCSS)
+		addListing(files, parentName, parentName)
 	}
 	if err := newFolder(dir); err != nil {
 		return err

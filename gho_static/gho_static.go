@@ -75,6 +75,7 @@ type Page struct {
 	Styles   []string
 	Scripts  []string
 	SubPages []SubPage // only set for content .html templates
+	Intro    template.HTML // a content .html template's markdown intro, from the .md file named like it
 	Previous *SubPage  // older sibling, for markdown pages listed by a template page
 	Next     *SubPage  // newer sibling, for markdown pages listed by a template page
 	Tags     []Tag     // every tag on the site's built pages
@@ -136,16 +137,48 @@ func render(tmpl *template.Template, name string, page Page) (string, error) {
 	return sb.String(), nil
 }
 
-// writeMarkdownPage converts the markdown at mdPath into page's content and
-// writes it with writePage. See mdToHTML for imgDir.
-func writeMarkdownPage(tmpl *template.Template, page Page, mdPath, out, imgDir string, assets []string) error {
-	mdBytes, err := os.ReadFile(mdPath)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", mdPath, err)
+// mdFile is a markdown page's front matter and the markdown after it.
+type mdFile struct {
+	Meta FrontMatter
+	Body []byte
+}
+
+// mdFiles holds each markdown file in the content folder by path, so each
+// is only read and parsed once.
+type mdFiles map[string]mdFile
+
+// readMarkdown reads and parses each markdown file in content and its
+// subfolders.
+func readMarkdown(content *file_access.ContentDir) (mdFiles, error) {
+	md := mdFiles{}
+	var walk func(dir *file_access.ContentDir) error
+	walk = func(dir *file_access.ContentDir) error {
+		for _, f := range dir.Files {
+			if !strings.EqualFold(filepath.Ext(f), ".md") {
+				continue
+			}
+			mdBytes, err := os.ReadFile(f)
+			if err != nil {
+				return fmt.Errorf("failed to read %s: %w", f, err)
+			}
+			meta, body := parseFrontMatter(mdBytes)
+			md[f] = mdFile{Meta: meta, Body: body}
+		}
+		for _, sub := range dir.Dirs {
+			if err := walk(sub); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	meta, body := parseFrontMatter(mdBytes)
-	page.Meta = meta
-	page.Content = toDiv(mdToHTML(body, page.Root, imgDir, meta.TOC))
+	return md, walk(content)
+}
+
+// writeMarkdownPage converts f into page's content and writes it with
+// writePage. See mdToHTML for imgDir.
+func writeMarkdownPage(tmpl *template.Template, page Page, f mdFile, out, imgDir string, assets []string) error {
+	page.Meta = f.Meta
+	page.Content = toDiv(mdToHTML(f.Body, page.Root, imgDir, f.Meta.TOC))
 	return writePage(tmpl, page, out, assets)
 }
 
@@ -227,14 +260,15 @@ func PagePath(src, root string, publish bool) (file, link string, err error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to read %s: %w", filepath.Dir(src), err)
 	}
-	pages := 0
+	// A template page and its markdown intro share a name, and are one page.
+	pages := map[string]bool{}
 	for _, e := range entries {
 		ext := strings.ToLower(filepath.Ext(e.Name()))
 		if !e.IsDir() && (ext == ".md" || ext == ".html") {
-			pages++
+			pages[strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))] = true
 		}
 	}
-	if pages == 1 {
+	if len(pages) == 1 {
 		base = path.Dir(base)
 	}
 	return path.Join(base, "index.html"), base + "/", nil
@@ -256,24 +290,14 @@ func (o Options) skip(draft, unreleased bool) bool {
 
 // folderStatus reports whether any markdown file directly in dir is a draft
 // or unreleased.
-func folderStatus(dir string) (draft, unreleased bool, err error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false, false, fmt.Errorf("failed to read %s: %w", dir, err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".md") {
-			continue
+func (md mdFiles) folderStatus(dir string) (draft, unreleased bool) {
+	for path, f := range md {
+		if filepath.Dir(path) == dir {
+			draft = draft || f.Meta.Draft
+			unreleased = unreleased || f.Meta.Unreleased()
 		}
-		mdBytes, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			return false, false, fmt.Errorf("failed to read %s: %w", e.Name(), err)
-		}
-		meta, _ := parseFrontMatter(mdBytes)
-		draft = draft || meta.Draft
-		unreleased = unreleased || meta.Unreleased()
 	}
-	return draft, unreleased, nil
+	return draft, unreleased
 }
 
 // warning and reset are terminal escape codes to start yellow on black
@@ -282,16 +306,12 @@ const warning, reset = "\033[33;40m", "\033[0m"
 
 // warnUnpublished prints a warning for each markdown page directly in dir
 // that's a draft or has a publish date in the future, so isn't published.
-func warnUnpublished(dir *file_access.ContentDir) error {
+func (md mdFiles) warnUnpublished(dir *file_access.ContentDir) {
 	for _, f := range dir.Files {
 		if !strings.EqualFold(filepath.Ext(f), ".md") {
 			continue
 		}
-		mdBytes, err := os.ReadFile(f)
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", f, err)
-		}
-		meta, _ := parseFrontMatter(mdBytes)
+		meta := md[f].Meta
 		var reasons []string
 		if meta.Draft {
 			reasons = append(reasons, "is a draft")
@@ -303,7 +323,6 @@ func warnUnpublished(dir *file_access.ContentDir) error {
 			fmt.Fprintf(os.Stderr, "%swarning: %s %s, so it won't be published or deployed%s\n", warning, f, strings.Join(reasons, " and "), reset)
 		}
 	}
-	return nil
 }
 
 // buildContent writes each .md file in dir (and its subfolders) as a page in
@@ -314,40 +333,30 @@ func warnUnpublished(dir *file_access.ContentDir) error {
 // has a template page) with no published date when publishing. siblings is
 // the parent folder's template page listing (if any), used to link each
 // markdown page to its neighbours.
-func buildContent(dir *file_access.ContentDir, root string, tmpl *template.Template, layout Page, buildDir string, shared []string, opts Options, siblings []SubPage, listed bool) error {
+func (md mdFiles) buildContent(dir *file_access.ContentDir, root string, tmpl *template.Template, layout Page, buildDir string, shared []string, opts Options, siblings []SubPage, listed bool) error {
 	rel, err := filepath.Rel(root, dir.Path)
 	if err != nil {
 		return err
 	}
 	var listing []SubPage
 	if hasListing(dir) {
-		if listing, err = subPages(dir, root, opts); err != nil {
+		if listing, err = md.subPages(dir, root, opts); err != nil {
 			return err
 		}
 	}
 
 	for _, sub := range dir.Dirs {
-		if err := buildContent(sub, root, tmpl, layout, buildDir, shared, opts, listing, hasListing(dir)); err != nil {
+		if err := md.buildContent(sub, root, tmpl, layout, buildDir, shared, opts, listing, hasListing(dir)); err != nil {
 			return err
 		}
 	}
 
-	draft, unreleased, err := folderStatus(dir.Path)
-	if err != nil {
-		return err
-	}
-	skip := opts.skip(draft, unreleased)
+	skip := opts.skip(md.folderStatus(dir.Path))
 	if skip {
-		if err := warnUnpublished(dir); err != nil {
-			return err
-		}
+		md.warnUnpublished(dir)
 	}
 	if listed && opts.Publish && !skip {
-		undated, err := undatedPage(dir)
-		if err != nil {
-			return err
-		}
-		if undated != "" {
+		if undated := md.undatedPage(dir); undated != "" {
 			fmt.Fprintf(os.Stderr, "error: %s has no published date, so it wasn't published\n", undated)
 			skip = true
 		}
@@ -387,6 +396,11 @@ func buildContent(dir *file_access.ContentDir, root string, tmpl *template.Templ
 		if ext != ".md" && ext != ".html" {
 			continue
 		}
+		stem := strings.TrimSuffix(f, filepath.Ext(f))
+		// A template page's intro is built into it, not as its own page.
+		if ext == ".md" && slices.Contains(dir.Files, stem+".html") {
+			continue
+		}
 		file, link, err := PagePath(f, root, opts.Publish)
 		if err != nil {
 			return err
@@ -399,8 +413,12 @@ func buildContent(dir *file_access.ContentDir, root string, tmpl *template.Templ
 		page.Root = rootFor(file)
 		if ext == ".md" {
 			page.Previous, page.Next = adjacent(siblings, link)
-			err = writeMarkdownPage(tmpl, page, f, out, rel, pageAssets)
+			err = writeMarkdownPage(tmpl, page, md[f], out, rel, pageAssets)
 		} else {
+			if intro, ok := md[stem+".md"]; ok {
+				page.Meta = intro.Meta
+				page.Intro = template.HTML(mdToHTML(intro.Body, page.Root, rel, intro.Meta.TOC))
+			}
 			err = writeTemplatePage(tmpl, page, listing, f, out, pageAssets)
 		}
 		if err != nil {
@@ -472,6 +490,10 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 	if err != nil {
 		return err
 	}
+	md, err := readMarkdown(content)
+	if err != nil {
+		return err
+	}
 
 	prefs, err := ReadPreferences(filepath.Join(srcDir, "preferences.yaml"))
 	if err != nil {
@@ -522,10 +544,7 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 			continue
 		}
 		src := srcs[0]
-		draft, unreleased, err := folderStatus(filepath.Dir(src))
-		if err != nil {
-			return err
-		}
+		draft, unreleased := md.folderStatus(filepath.Dir(src))
 		if opts.skip(draft, unreleased) {
 			continue
 		}
@@ -556,10 +575,10 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		},
 		Root: rootFor("index.html"),
 	}
-	if layout.Tags, err = collectTags(content, opts); err != nil {
+	if layout.Tags, err = md.collectTags(content, opts); err != nil {
 		return err
 	}
-	if layout.Site.RecentBlogs, err = recentPages(content, opts, 3); err != nil {
+	if layout.Site.RecentBlogs, err = md.recentPages(content, opts, 3); err != nil {
 		return err
 	}
 
@@ -621,9 +640,14 @@ func buildSite(srcDir, outDir string, opts Options, version string) error {
 		}
 	}
 
-	if err := writeMarkdownPage(tmpl, layout, filepath.Join(srcDir, "index.md"), filepath.Join(buildDir, "index.html"), "", shared); err != nil {
+	indexBytes, err := os.ReadFile(filepath.Join(srcDir, "index.md"))
+	if err != nil {
+		return fmt.Errorf("failed to read index.md: %w", err)
+	}
+	meta, body := parseFrontMatter(indexBytes)
+	if err := writeMarkdownPage(tmpl, layout, mdFile{Meta: meta, Body: body}, filepath.Join(buildDir, "index.html"), "", shared); err != nil {
 		return err
 	}
 
-	return buildContent(content, content.Path, tmpl, layout, buildDir, shared, opts, nil, false)
+	return md.buildContent(content, content.Path, tmpl, layout, buildDir, shared, opts, nil, false)
 }

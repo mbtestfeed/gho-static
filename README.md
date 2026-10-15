@@ -171,7 +171,7 @@ To include an image in a page or post, put it in the same folder as its markdown
 
 ### Blog posts and listings
 
-A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing page: it lists each of its subfolders' posts, newest first. Post folders are named `YYYYMMDD_<name>`, each with a `post.md` inside. Posts in the same listing get previous and next links.
+A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing page: it lists each of its subfolders' posts, newest first, after an intro from the markdown file in the same folder. Post folders are named `YYYYMMDD_<name>`, each with a `post.md` inside. Posts in the same listing get previous and next links.
 
 ### CSS and JavaScript
 
