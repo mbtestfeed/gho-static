@@ -76,7 +76,7 @@ func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPa
 		Link:       link,
 		Published:  formatDate(meta.Published),
 		Draft:      draft,
-		Unreleased: meta.Unreleased(),
+		Unreleased: meta.Unreleased,
 		Summary:    truncate(meta.Summary),
 		Tags:       tags,
 		published:  published,
@@ -264,7 +264,7 @@ func readContent(srcDir string) (source, *file_access.ContentDir, error) {
 	if err != nil {
 		return source{}, nil, err
 	}
-	s, err := readSource(fsys, content)
+	s, err := readSource(fsys, content, time.Now())
 	return s, content, err
 }
 

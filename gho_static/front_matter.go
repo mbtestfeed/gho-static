@@ -15,6 +15,8 @@ type FrontMatter struct {
 	Draft     bool
 	TOC       bool     // add a table of contents to the top of the page
 	Tags      []string // as [a, b], a, b or "- a" lines beneath
+
+	Unreleased bool // Published is set and after the build's time; set by the build, not parsed
 }
 
 // parseFrontMatter splits a leading "---" delimited block of "key: value"
@@ -98,10 +100,10 @@ func formatDate(s string) string {
 	return s
 }
 
-// Unreleased reports whether Published is set and still in the future.
-func (fm FrontMatter) Unreleased() bool {
+// IsUnreleased reports whether Published is set and after now.
+func (fm FrontMatter) IsUnreleased(now time.Time) bool {
 	t, ok := parseDate(fm.Published)
-	return ok && time.Now().Before(t)
+	return ok && now.Before(t)
 }
 
 // ReleaseLine formats Published as yyyy/mm/dd hh:mm.

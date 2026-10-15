@@ -200,23 +200,23 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 }
 
 // GeneratePage creates the folder dir and writes a draft content page into
-// it, named and titled after the folder, by author if set. A clean page has
-// only front matter.
-func GeneratePage(dir, author string, clean bool) error {
+// it, named and titled after the folder, published at now, by author if set.
+// A clean page has only front matter.
+func GeneratePage(dir, author string, clean bool, now time.Time) error {
 	if err := newFolder(dir); err != nil {
 		return err
 	}
 	name := filepath.Base(dir)
 	files := map[string]string{}
-	addPage(files, name, ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true, clean: clean}), "")
+	addPage(files, name, ".md", contentPage(name, now, pageMeta{author: author, draft: true, clean: clean}), "")
 	return writeFiles(dir, files)
 }
 
 // GeneratePost creates the folder dir and writes a draft post.md for post
-// name, published today, by author if set, into it. If dir's parent folder
+// name, published at now, by author if set, into it. If dir's parent folder
 // doesn't exist, it is created with a listing page named after it. A clean
 // post has only front matter.
-func GeneratePost(dir, name, author string, clean bool) error {
+func GeneratePost(dir, name, author string, clean bool, now time.Time) error {
 	parent := filepath.Dir(dir)
 	files := map[string]string{}
 	if _, err := os.Stat(parent); os.IsNotExist(err) {
@@ -226,7 +226,7 @@ func GeneratePost(dir, name, author string, clean bool) error {
 	if err := newFolder(dir); err != nil {
 		return err
 	}
-	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, time.Now(), pageMeta{author: author, draft: true, clean: clean}), "")
+	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, now, pageMeta{author: author, draft: true, clean: clean}), "")
 	return writeFiles(parent, files)
 }
 

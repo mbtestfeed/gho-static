@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/ast"
@@ -154,8 +155,8 @@ type source struct {
 }
 
 // readSource reads and parses each markdown file in content (crawled from
-// fsys) and its subfolders.
-func readSource(fsys fs.FS, content *file_access.ContentDir) (source, error) {
+// fsys) and its subfolders, marking those published after now unreleased.
+func readSource(fsys fs.FS, content *file_access.ContentDir, now time.Time) (source, error) {
 	s := source{FS: fsys, md: map[string]mdFile{}}
 	var walk func(dir *file_access.ContentDir) error
 	walk = func(dir *file_access.ContentDir) error {
@@ -168,6 +169,7 @@ func readSource(fsys fs.FS, content *file_access.ContentDir) (source, error) {
 				return fmt.Errorf("failed to read %s: %w", f, err)
 			}
 			meta, body := parseFrontMatter(mdBytes)
+			meta.Unreleased = meta.IsUnreleased(now)
 			s.md[f] = mdFile{Meta: meta, Body: body}
 		}
 		for _, sub := range dir.Dirs {
@@ -247,6 +249,7 @@ type Options struct {
 	Publish bool // leave out drafts and unreleased pages, and write pages as folder/index.html linked by folder
 
 	Warnings io.Writer // where build warnings are written, or stderr if nil
+	Now      time.Time // the build's time, deciding which pages are unreleased, or the current time if zero
 }
 
 // warnings returns where o's build warnings are written.
@@ -319,7 +322,7 @@ func (s source) folderStatus(dir string) (draft, unreleased bool) {
 	for p, f := range s.md {
 		if path.Dir(p) == dir {
 			draft = draft || f.Meta.Draft
-			unreleased = unreleased || f.Meta.Unreleased()
+			unreleased = unreleased || f.Meta.Unreleased
 		}
 	}
 	return draft, unreleased
@@ -341,7 +344,7 @@ func (s source) warnUnpublished(dir *file_access.ContentDir, w io.Writer) {
 		if meta.Draft {
 			reasons = append(reasons, "is a draft")
 		}
-		if meta.Unreleased() {
+		if meta.Unreleased {
 			reasons = append(reasons, "has a publish date in the future ("+meta.ReleaseLine()+")")
 		}
 		if len(reasons) > 0 {
@@ -515,7 +518,11 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 	if err != nil {
 		return err
 	}
-	s, err := readSource(fsys, content)
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	s, err := readSource(fsys, content, now)
 	if err != nil {
 		return err
 	}
@@ -673,6 +680,7 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 		return fmt.Errorf("failed to read index.md: %w", err)
 	}
 	meta, body := parseFrontMatter(indexBytes)
+	meta.Unreleased = meta.IsUnreleased(now)
 	if err := writeMarkdownPage(tmpl, layout, mdFile{Meta: meta, Body: body}, filepath.Join(buildDir, "index.html"), "", shared); err != nil {
 		return err
 	}

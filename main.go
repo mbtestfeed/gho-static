@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gho-static/cli"
 	"gho-static/deployment"
@@ -128,9 +129,9 @@ func main() {
 			break
 		}
 		if cmd.Mode == cli.GeneratePage {
-			err = generator.GeneratePage(cmd.GenPath, prefs.DefaultAuthor, cmd.Clean)
+			err = generator.GeneratePage(cmd.GenPath, prefs.DefaultAuthor, cmd.Clean, time.Now())
 		} else {
-			err = generator.GeneratePost(cmd.GenPath, cmd.PostName, prefs.DefaultAuthor, cmd.Clean)
+			err = generator.GeneratePost(cmd.GenPath, cmd.PostName, prefs.DefaultAuthor, cmd.Clean, time.Now())
 		}
 	case cli.SetupDeployment:
 		err = deployment.Setup(filepath.Join(cmd.Site, "build"), cmd.Method, cmd.Repo)
