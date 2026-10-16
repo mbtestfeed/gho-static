@@ -13,10 +13,6 @@ import (
 	"gho-static/utils"
 )
 
-// Grey, Red, Link and Reset are terminal escape codes to start grey text,
-// red text, green on black link text, and return to normal text.
-const Grey, Red, Link, Reset = "\033[90m", "\033[31m", "\033[32;40m", "\033[0m"
-
 const Usage = `Usage: gho-static [flags] <site folder>
 
 Builds the site in <site folder> into <site folder>/build.
@@ -49,18 +45,28 @@ Flags:
                           whether to publish it (removing its "draft: true").
                           With --yes, publishes them all.
   --deploy                Build <site folder> for publishing (-p) and deploy
-                          it, using the deployment method its build folder is
-                          set up for, or asking for one if there isn't one.
-                          For GitHub Pages, commits the build folder and
-                          pushes it.
+                          it, using the deployment method and settings saved
+                          in its preferences.yaml, or asking for any that
+                          aren't. For GitHub Pages, commits the build folder
+                          and pushes it.
   --deployment-method <github-pages|none>
                           Set up <site folder>/build for publishing, building
-                          it first if it doesn't exist. github-pages makes it a
-                          git repo, with --repo as its remote. Asks for the
-                          method (and repo) if not given. With -g, used instead
-                          of asking.
-  --repo <url>            With --deployment-method github-pages, the GitHub
-                          repo to push the build folder to.
+                          it first if it doesn't exist, and save the method in
+                          preferences.yaml. github-pages makes it a git repo,
+                          with the <username>.github.io repo of the username
+                          saved in preferences.yaml as its remote. Asks for
+                          the method (and username) if not given. With -g,
+                          used instead of asking.
+  --deploy-setting <name=value>
+                          A setting for the deployment method, e.g.
+                          username=<name> for github-pages, used instead of
+                          the one saved in preferences.yaml (and saved in its
+                          place).
+                          Can be given more than once. Secret settings, such
+                          as API keys, are never saved: give them with this,
+                          in a GHO_STATIC_<METHOD>_<SETTING> environment
+                          variable (e.g. GHO_STATIC_NETLIFY_TOKEN), or when
+                          asked.
 
 Single-letter flags can be combined, e.g. -cy.
 `
@@ -89,14 +95,16 @@ type Command struct {
 	Clean    bool   // generate without example content (--clean)
 	Options  gho_static.Options
 	Prefs    gho_static.Preferences // only set for GenerateSite
-	Method   deployment.Method      // only set for GenerateSite, SetupDeployment and Deploy
-	Repo     string                 // git remote for the build folder, only set for GitHub Pages
+	Deployer deployment.Deployer    // only set for GenerateSite, SetupDeployment and Deploy
+	// Deployer's method and settings, to save in preferences.yaml
+	Deployment gho_static.Deployment
 
-	method      string // --deployment-method value, if it's a method
-	badMethod   string // --deployment-method value that isn't a method, so is taken as the site folder
-	methodGiven bool   // --deployment-method was given
-	repoGiven   bool   // --repo was given
-	collection  string // content folder a page or post is generated in
+	method      string              // --deployment-method value, if it's a method
+	badMethod   string              // --deployment-method value that isn't a method, so is taken as the site folder
+	methodGiven bool                // --deployment-method was given
+	saved       deployment.Settings // saved or detected settings for method
+	given       deployment.Settings // settings given with --deploy-setting
+	collection  string              // content folder a page or post is generated in
 }
 
 // Parse reads args (without the program name) into a Command, without
@@ -113,14 +121,21 @@ func Parse(args []string) (Command, error) {
 			continue
 		case "deployment-method":
 			cmd.methodGiven, cmd.method = true, f.Val
-			if _, ok := deployment.Methods[f.Val]; !ok && f.Val != "" {
+			if _, ok := deployment.Find(f.Val); !ok && f.Val != "" {
 				// No method given, so ParseArgs took the site folder as one.
 				// Resolve checks it is a folder.
 				positional, cmd.method, cmd.badMethod = append(positional, f.Val), "", f.Val
 			}
 			continue
-		case "repo":
-			cmd.Repo, cmd.repoGiven = f.Val, true
+		case "deploy-setting":
+			name, value, ok := strings.Cut(f.Val, "=")
+			if !ok || name == "" {
+				return cmd, fmt.Errorf("--deploy-setting needs a name=value setting, e.g. --deploy-setting username=<name>")
+			}
+			if cmd.given == nil {
+				cmd.given = deployment.Settings{}
+			}
+			cmd.given[name] = value
 			continue
 		case "preview-publish":
 			cmd.Options.Preview = true
@@ -208,45 +223,95 @@ func Parse(args []string) (Command, error) {
 func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 	if cmd.badMethod != "" {
 		if info, err := os.Stat(cmd.badMethod); err != nil || !info.IsDir() {
-			return cmd, fmt.Errorf("unknown deployment method %q: use github-pages or none", cmd.badMethod)
+			var names []string
+			for _, m := range deployment.Methods {
+				names = append(names, m.Name)
+			}
+			return cmd, fmt.Errorf("unknown deployment method %q: use %s", cmd.badMethod, strings.Join(names, " or "))
 		}
 	}
 
-	// chooseMethod sets the deployment method and repo from the flags,
-	// asking for any not given if ask is set.
-	chooseMethod := func(ask bool) {
-		cmd.Method = deployment.Methods[cmd.method]
-		if cmd.method == "" && ask {
-			cmd.Method = t.askDeploymentMethod()
+	// chooseMethod sets the Deployer from the flags and saved settings,
+	// asking for the method and any settings it needs that weren't given if
+	// ask is set. Settings the method doesn't use are an error.
+	chooseMethod := func(ask bool) error {
+		m, ok := deployment.Find(cmd.method)
+		var askSetting deployment.Ask
+		if ask {
+			if !ok {
+				m = t.askDeploymentMethod()
+			}
+			askSetting = t.AskSetting
+		} else if !ok {
+			m, _ = deployment.Find(deployment.Default)
 		}
-		if cmd.Method == deployment.GitHubPages && !cmd.repoGiven && ask {
-			cmd.Repo = t.askRepo()
+		var saved deployment.Settings
+		if m.Name == cmd.method {
+			saved = cmd.saved
 		}
+		if err := m.Validate(saved, filepath.Join(cmd.Site, "preferences.yaml")); err != nil {
+			return err
+		}
+		if err := m.Validate(cmd.given, "--deploy-setting"); err != nil {
+			return err
+		}
+		cmd.Deployer = m.New(m.Gather(saved, cmd.given), askSetting, t.Output)
+		cmd.Deployment = gho_static.Deployment{Method: m.Name, Settings: m.Saveable(cmd.Deployer.Settings())}
+		return nil
 	}
 
 	switch cmd.Mode {
-	case Deploy:
+	case Deploy, SetupDeployment:
+		// The method saved in preferences.yaml is used unless one is given,
+		// along with its saved settings. Sites set up before they were saved
+		// there are detected from their build folder instead.
+		prefs, err := gho_static.ReadPreferences(filepath.Join(cmd.Site, "preferences.yaml"))
+		if err != nil {
+			return cmd, err
+		}
+		saved := prefs.Deployment
 		if !cmd.methodGiven {
-			existing, repo := deployment.Detect(filepath.Join(cmd.Site, "build"))
-			if existing != deployment.None {
-				cmd.method = "github-pages"
+			cmd.method = saved.Method
+			// A site that isn't deployed yet needs a method to deploy with.
+			if cmd.method == deployment.Default {
+				cmd.method = ""
 			}
-			if repo != "" && !cmd.repoGiven {
-				cmd.Repo, cmd.repoGiven = repo, true
+			if cmd.method == "" {
+				if m, s, ok := deployment.Detect(filepath.Join(cmd.Site, "build")); ok {
+					cmd.method, saved = m.Name, gho_static.Deployment{Method: m.Name, Settings: s}
+				}
 			}
 		}
-		if cmd.Yes && (cmd.method == "" || (deployment.Methods[cmd.method] == deployment.GitHubPages && !cmd.repoGiven)) {
-			return cmd, fmt.Errorf("%s has no deployment method or GitHub repo set up, and --yes stops them being asked for. Rerun without --yes, or pass --deployment-method github-pages --repo <url>.", cmd.Site)
+		if saved.Method == cmd.method {
+			cmd.saved = saved.Settings
 		}
-		chooseMethod(true)
-	case SetupDeployment:
-		chooseMethod(true)
+		if cmd.Mode == SetupDeployment {
+			if err := chooseMethod(true); err != nil {
+				return cmd, err
+			}
+			break
+		}
+		if cmd.Yes {
+			if err := chooseMethod(false); err != nil {
+				return cmd, err
+			}
+			if _, ok := deployment.Find(cmd.method); !ok || cmd.Deployer.CheckPush() != nil {
+				return cmd, fmt.Errorf("%s has no deployment method or settings set up, and --yes stops them being asked for. Rerun without --yes, or set them in the deployment section of its preferences.yaml or with --deploy-setting.", cmd.Site)
+			}
+			break
+		}
+		if err := chooseMethod(true); err != nil {
+			return cmd, err
+		}
 	case GenerateSite:
 		// Check before prompting so the answers aren't wasted.
 		if _, err := os.Stat(cmd.GenPath); err == nil {
 			return cmd, fmt.Errorf("%s already exists", cmd.GenPath)
 		}
-		chooseMethod(!cmd.Yes)
+		if err := chooseMethod(!cmd.Yes); err != nil {
+			return cmd, err
+		}
+		cmd.Prefs.Deployment = cmd.Deployment
 	case GeneratePage, GeneratePost:
 		if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
 			return cmd, fmt.Errorf("site folder %s does not exist. Create it first with `gho-static -g %s`, then rerun this command.", cmd.Site, cmd.Site)

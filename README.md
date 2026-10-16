@@ -111,9 +111,9 @@ The first command rebuilds the site after you edit it. The second goes through y
 - `--preview-publish`: build without drafts and unreleased pages, as publishing does, but with links that still work locally. Otherwise they're built, with a warning on each.
 - `-p, --publish`: build for publishing. Each page is written as `folder/index.html`, and drafts and unreleased pages are left out. Can't be used with `--preview-publish`.
 - `--drafts`: go through each draft page, asking whether to publish it. With `--yes`, publishes them all.
-- `--deploy`: build for publishing and deploy, using the deployment method the site is set up for, or asking for one.
-- `--deployment-method <github-pages|none>`: set up the site's build folder for deploying.
-- `--repo <url>`: with `--deployment-method github-pages`, the GitHub repo to push the build folder to.
+- `--deploy`: build for publishing and deploy, using the deployment method and settings saved in `preferences.yaml`, or asking for any that aren't.
+- `--deployment-method <github-pages|none>`: set up the site's build folder for deploying, and save the method in `preferences.yaml`.
+- `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `preferences.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
 
 Single-letter flags can be combined, e.g. `-cy`. Run `gho-static` with no arguments for the full usage text.
 
@@ -135,7 +135,7 @@ mysite/
 
 ### Preferences
 
-`preferences.yaml` holds the site's settings: its name, the menu links (`nav_links`, as content folder names in menu order), colours for light and dark mode, the font, logo and favicon, the default author for new pages, and the intro sidebar's image, text and social links. Rebuild the site after changing it.
+`preferences.yaml` holds the site's settings: its name, the menu links (`nav_links`, as content folder names in menu order), colours for light and dark mode, the font, logo and favicon, the default author for new pages, and the intro sidebar's image, text and social links. Rebuild the site after changing it. Its `deployment` section holds how the site is deployed: a `method` (`github-pages` or `none`) and that method's settings, such as GitHub Pages' `username`, whose `<username>.github.io` repo the site is pushed to. It's saved when the site is generated or its deployment is set up, and used by `--deploy`.
 
 ### Markdown pages
 

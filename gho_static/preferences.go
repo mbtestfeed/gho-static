@@ -3,6 +3,7 @@ package gho_static
 import (
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,6 +41,14 @@ type Preferences struct {
 	IntroName        string      `yaml:"intro_name"`        // intro sidebar heading
 	IntroDescription string      `yaml:"intro_description"` // intro sidebar text
 	SocialLinks      SocialLinks `yaml:"social_links"`      // intro sidebar links, as name: url pairs; blank ones aren't shown
+	Deployment       Deployment  `yaml:"deployment,omitempty"` // how the build folder is published, saved once it's set up
+}
+
+// Deployment is how a site's build folder is published: a deployment
+// method's name, and its settings alongside it.
+type Deployment struct {
+	Method   string            `yaml:"method"`
+	Settings map[string]string `yaml:",inline"`
 }
 
 // SocialLink is a named link shown in the intro sidebar.
@@ -177,10 +186,58 @@ func RemoveFromList(path, key, value string) error {
 	})
 }
 
+// SetDeployment saves d as the deployment setting in the preferences file
+// at path, keeping the rest of the file as it is.
+func SetDeployment(path string, d Deployment) error {
+	return editPreferences(path, func(root *yaml.Node) (bool, error) {
+		var value yaml.Node
+		if err := value.Encode(d); err != nil {
+			return false, err
+		}
+		old := mappingValue(root, "deployment")
+		if old == nil {
+			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "deployment"}, &value)
+			return true, nil
+		}
+		var current Deployment
+		if old.Decode(&current) == nil && current.Method == d.Method && maps.Equal(current.Settings, d.Settings) {
+			return false, nil
+		}
+		*old = value
+		return true, nil
+	})
+}
+
 // editList calls edit with the list setting key in the preferences file at
 // path (see AddToList for empty and missing settings), writing the file
 // back if edit reports a change, keeping the rest of it as it is.
 func editList(path, key string, edit func(list *yaml.Node) bool) error {
+	return editPreferences(path, func(root *yaml.Node) (bool, error) {
+		list := mappingValue(root, key)
+		if list == nil {
+			var defaults yaml.Node
+			if err := defaults.Encode(DefaultPreferences); err != nil {
+				return false, err
+			}
+			if list = mappingValue(&defaults, key); list == nil {
+				list = &yaml.Node{Kind: yaml.SequenceNode}
+			}
+			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, list)
+		}
+		switch {
+		case list.Kind == yaml.ScalarNode && (list.Tag == "!!null" || list.Value == ""):
+			*list = yaml.Node{Kind: yaml.SequenceNode}
+		case list.Kind != yaml.SequenceNode:
+			return false, fmt.Errorf("can't change %s in %s: it isn't a list", key, path)
+		}
+		return edit(list), nil
+	})
+}
+
+// editPreferences calls edit with the settings in the preferences file at
+// path (none if it's missing or empty), writing the file back if edit
+// reports a change, keeping the rest of it as it is.
+func editPreferences(path string, edit func(root *yaml.Node) (bool, error)) error {
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read %s: %w", path, err)
@@ -194,28 +251,10 @@ func editList(path, key string, edit func(list *yaml.Node) bool) error {
 	}
 	root := doc.Content[0]
 	if root.Kind != yaml.MappingNode {
-		return fmt.Errorf("can't change %s: %s isn't a list of settings", key, path)
+		return fmt.Errorf("can't change %s: it isn't a list of settings", path)
 	}
-
-	list := mappingValue(root, key)
-	if list == nil {
-		var defaults yaml.Node
-		if err := defaults.Encode(DefaultPreferences); err != nil {
-			return err
-		}
-		if list = mappingValue(&defaults, key); list == nil {
-			list = &yaml.Node{Kind: yaml.SequenceNode}
-		}
-		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, list)
-	}
-	switch {
-	case list.Kind == yaml.ScalarNode && (list.Tag == "!!null" || list.Value == ""):
-		*list = yaml.Node{Kind: yaml.SequenceNode}
-	case list.Kind != yaml.SequenceNode:
-		return fmt.Errorf("can't change %s in %s: it isn't a list", key, path)
-	}
-	if !edit(list) {
-		return nil
+	if changed, err := edit(root); err != nil || !changed {
+		return err
 	}
 
 	out, err := yaml.Marshal(&doc)

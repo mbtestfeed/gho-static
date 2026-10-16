@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"gho-static/utils"
 	gitclient "gho-static/utils/git-client"
+	"gho-static/utils/output"
 )
 
 // RepoURL returns the SSH URL of user's <user>.github.io repo.
@@ -58,46 +58,91 @@ func CheckRepo(repo string) error {
 	return nil
 }
 
-// IsSetUp reports whether buildDir is set up for GitHub Pages.
-func IsSetUp(buildDir string) bool {
-	return gitclient.IsRepo(buildDir)
+// Detect returns the GitHub username whose <username>.github.io repo
+// buildDir pushes to (or "" if it pushes nowhere, or to another repo), and
+// whether buildDir is set up for GitHub Pages.
+func Detect(buildDir string) (username string, ok bool) {
+	if !gitclient.IsRepo(buildDir) {
+		return "", false
+	}
+	owner, name := repoPath(gitclient.Remote(buildDir))
+	if !strings.EqualFold(name, owner+".github.io") {
+		return "", true
+	}
+	return owner, true
 }
 
-// Repo returns the repo buildDir pushes to, or "" if none is set.
-func Repo(buildDir string) string {
-	return gitclient.Remote(buildDir)
+// Deployer deploys a build folder to GitHub Pages, as a git repo of its own
+// pushed to Username's <username>.github.io repo.
+type Deployer struct {
+	Username string // or "" if it's to be added later
+	output.Output
 }
 
-// Check returns an error explaining what's missing to deploy to repo.
-func Check(repo string) error {
+// New returns a Deployer for username. If username is "", it asks with ask
+// (unless nil) for it.
+func New(username string, ask func(prompt string, hints []string, secret bool) string, out output.Output) Deployer {
+	if username == "" && ask != nil {
+		username = ask("GitHub username: ", []string{"the site is published from the <username>.github.io repo, or press enter to add it later"}, false)
+	}
+	return Deployer{Username: username, Output: out}
+}
+
+// repo returns the SSH URL of d's repo, or "" if its username isn't set.
+func (d Deployer) repo() string {
+	if d.Username == "" {
+		return ""
+	}
+	return RepoURL(d.Username)
+}
+
+// Settings returns d's username, if set, as its "username" setting.
+func (d Deployer) Settings() map[string]string {
+	if d.Username == "" {
+		return nil
+	}
+	return map[string]string{"username": d.Username}
+}
+
+// Check returns an error explaining what to do if d's repo is set but
+// can't be reached.
+func (d Deployer) Check() error {
+	if d.repo() == "" {
+		return nil
+	}
+	return CheckRepo(d.repo())
+}
+
+// CheckPush returns an error explaining what's missing to push to d's repo.
+func (d Deployer) CheckPush() error {
 	if err := gitclient.Installed(); err != nil {
 		return fmt.Errorf("can't deploy to GitHub Pages: %w", err)
 	}
-	if repo == "" {
-		return fmt.Errorf("can't deploy to GitHub Pages: no GitHub repo is set to push to")
+	if d.repo() == "" {
+		return fmt.Errorf("can't deploy to GitHub Pages: no GitHub username is set to push to")
 	}
 	return nil
 }
 
-// Setup makes buildDir a git repo, with repo (if given) as its remote. If
-// buildDir isn't a repo yet, it's replaced with a clone of repo so the
-// repo's history is kept; the site should be built into it afterwards.
-func Setup(buildDir, repo string) error {
+// Setup makes buildDir a git repo, with d's repo (if set) as its remote. If
+// buildDir isn't a repo yet, it's replaced with a clone of the repo so its
+// history is kept; the site should be built into it afterwards.
+func (d Deployer) Setup(buildDir string) error {
 	if err := gitclient.Installed(); err != nil {
 		return err
 	}
-	if repo == "" {
+	if d.repo() == "" {
 		if err := os.MkdirAll(buildDir, 0755); err != nil {
 			return fmt.Errorf("failed to create %s: %w", buildDir, err)
 		}
 		return gitclient.Init(buildDir)
 	}
-	return utils.Step("Linking to "+PagesURL(repo)+". One second...", func() error {
-		if err := CheckRepo(repo); err != nil {
+	return d.Step("Linking to "+PagesURL(d.repo())+". One second...", func() error {
+		if err := CheckRepo(d.repo()); err != nil {
 			return err
 		}
 		if gitclient.IsRepo(buildDir) {
-			if err := gitclient.SetRemote(buildDir, repo); err != nil {
+			if err := gitclient.SetRemote(buildDir, d.repo()); err != nil {
 				return err
 			}
 			// The build is regenerated each time, so its own history can give
@@ -110,16 +155,20 @@ func Setup(buildDir, repo string) error {
 		if err := os.RemoveAll(buildDir); err != nil {
 			return fmt.Errorf("failed to remove %s: %w", buildDir, err)
 		}
-		return gitclient.Clone(repo, buildDir)
+		return gitclient.Clone(d.repo(), buildDir)
 	})
 }
 
 // Push commits everything in buildDir and pushes it to its repo.
-func Push(buildDir string) error {
-	return utils.Step("Deploying to "+gitclient.Remote(buildDir)+". Shouldn't take long...", func() error {
+func (d Deployer) Push(buildDir string) error {
+	err := d.Step("Deploying to "+gitclient.Remote(buildDir)+". Shouldn't take long...", func() error {
 		if err := gitclient.CommitAll(buildDir, "Deploy "+time.Now().Format("2006-01-02 15:04")); err != nil {
 			return err
 		}
 		return gitclient.Push(buildDir)
 	})
+	if err == nil {
+		d.Infof("It may take a minute or two to update on GitHub.\n")
+	}
+	return err
 }
