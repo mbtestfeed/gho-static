@@ -41,7 +41,7 @@ type Site struct {
 	IntroName        string
 	IntroDescription string
 	SocialLinks      []SocialLink // only those with a URL
-	RecentActivity   []SubPage    // the most recently published listed pages
+	RecentActivity   []SubPage    // the most recently published posts in the recent activity sidebar's collections
 }
 
 // VersionComment returns an HTML comment naming the build version. It's
@@ -219,14 +219,16 @@ func writePage(tmpl *template.Template, page Page, out string, assets []string) 
 		footer += Attribution + "\n"
 	}
 	page.Header, page.Footer = toDiv([]byte(header)), toDiv([]byte(footer))
+	// The recent activity sidebar is left out when it has nothing to list.
 	for _, s := range []struct {
 		name string
 		html *template.HTML
+		show bool
 	}{
-		{"intro-sidebar.html", &page.IntroSidebar},
-		{"recent-activity.html", &page.RecentActivity},
+		{"intro-sidebar.html", &page.IntroSidebar, true},
+		{"recent-activity.html", &page.RecentActivity, len(page.Site.RecentActivity) > 0},
 	} {
-		if tmpl.Lookup(s.name) == nil {
+		if !s.show || tmpl.Lookup(s.name) == nil {
 			continue
 		}
 		sidebar, err := render(tmpl, s.name, page)

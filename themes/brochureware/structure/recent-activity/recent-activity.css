@@ -20,6 +20,13 @@
     }
 }
 
+.recent-heading {
+    margin-bottom: 16px;
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
 .recent-links {
     list-style: none;
 }

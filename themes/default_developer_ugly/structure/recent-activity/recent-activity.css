@@ -18,6 +18,10 @@
     }
 }
 
+.recent-heading {
+    margin-bottom: 10px;
+}
+
 .recent-links {
     list-style: none;
 }

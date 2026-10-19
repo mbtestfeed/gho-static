@@ -109,7 +109,7 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 		show bool
 	}{
 		{"intro-sidebar", prefs.ShowIntroSidebar},
-		{"recent-activity", prefs.ShowRecentActivitySidebar},
+		{"recent-activity", len(prefs.RecentSidebarCollections) > 0},
 	} {
 		if tmplPath := path.Join("structure", sidebar.name, sidebar.name+".html"); sidebar.show && file_access.FileExists(fsys, tmplPath) {
 			templates = append(templates, tmplPath)
@@ -178,7 +178,7 @@ func (ls loadedSite) layout(version string) (Page, error) {
 	if layout.Tags, err = ls.collectTags(content, opts); err != nil {
 		return Page{}, err
 	}
-	if layout.Site.RecentActivity, err = ls.recentPages(content, opts, 6); err != nil {
+	if layout.Site.RecentActivity, err = ls.recentPages(content, prefs.RecentSidebarCollections, opts, 6); err != nil {
 		return Page{}, err
 	}
 	return layout, nil

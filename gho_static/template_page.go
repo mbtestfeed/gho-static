@@ -134,23 +134,20 @@ func folderImages(files []string, root string) []string {
 	return images
 }
 
-// recentPages returns the n most recently published pages listed by any
-// template page in content (the content folder root), skipping folders opts
-// doesn't allow.
-func (s source) recentPages(content *file_access.ContentDir, opts Options, n int) ([]SubPage, error) {
+// recentPages returns the n most recently published posts in the named
+// collections (folders with a template page directly in content, the
+// content folder root), skipping folders opts doesn't allow.
+func (s source) recentPages(content *file_access.ContentDir, collections []string, opts Options, n int) ([]SubPage, error) {
 	var pages []SubPage
-	err := walk(content, false, func(dir *file_access.ContentDir, _ bool) error {
-		if hasListing(dir) {
-			subs, err := s.subPages(dir, content.Path, opts)
-			if err != nil {
-				return err
-			}
-			pages = append(pages, subs...)
+	for _, dir := range content.Dirs {
+		if !slices.Contains(collections, path.Base(dir.Path)) || !hasListing(dir) {
+			continue
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		subs, err := s.subPages(dir, content.Path, opts)
+		if err != nil {
+			return nil, err
+		}
+		pages = append(pages, subs...)
 	}
 	slices.SortFunc(pages, func(a, b SubPage) int { return b.published.Compare(a.published) })
 	return pages[:min(n, len(pages))], nil

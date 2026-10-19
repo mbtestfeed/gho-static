@@ -210,7 +210,7 @@ Two folder names in `content/` are reserved, and work differently from other col
 
 - The theme's CSS styles the whole site (see Themes, above). Your own CSS can use its colours as variables, e.g. `color: var(--banner-color)`.
 - Each page's folder has a `.css` and `.js` file named after it, e.g. `content/about/about.css`. These only apply to the pages in that folder, so you can style one page without affecting the rest.
-- The header, footer and sidebars each have their own HTML in `structure/`, and their CSS in the theme. Turn the sidebars on or off with `show_intro_sidebar` and `show_recent_activity_sidebar` in `settings.yaml`.
+- The header, footer and sidebars each have their own HTML in `structure/`, and their CSS in the theme. Turn the intro sidebar on or off with `show_intro_sidebar` in `settings.yaml`. The recent activity sidebar lists the newest posts from the collections in `collections_displayed_in_recent_sidebar` (`gallery` and `blogs` by default), and is left out if that list is empty or those collections have no posts to show.
 - `index.js` is linked from every page, as is a `.js` file beside each structure template, e.g. `structure/header/header.js`, if you add one.
 - Files in `static/` are copied into `build/static` as they are, for fonts, downloads or images used on several pages.
 

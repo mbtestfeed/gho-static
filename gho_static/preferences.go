@@ -31,7 +31,7 @@ type Preferences struct {
 	Favicon         string `yaml:"favicon"` // browser tab icon, relative to the site folder
 	DefaultAuthor   string `yaml:"default_author"` // added to new markdown pages' front matter, if set
 	ShowIntroSidebar       bool   `yaml:"show_intro_sidebar"`
-	ShowRecentActivitySidebar bool `yaml:"show_recent_activity_sidebar"`
+	RecentSidebarCollections []string `yaml:"collections_displayed_in_recent_sidebar"` // content folder names whose posts the recent activity sidebar lists; empty hides it
 	IntroSidebarImage      string `yaml:"intro_sidebar_image"` // intro sidebar image, relative to the site folder
 	IntroName        string      `yaml:"intro_name"`        // intro sidebar heading
 	IntroDescription string      `yaml:"intro_description"` // intro sidebar text
@@ -134,7 +134,7 @@ var DefaultPreferences = Preferences{
 	Logo:            "static/img/gho_stephanie_64x64.svg",
 	Favicon:         "static/img/favicon.ico",
 	ShowIntroSidebar:       true,
-	ShowRecentActivitySidebar: true,
+	RecentSidebarCollections: []string{"gallery", "blogs"},
 	IntroSidebarImage:      "static/img/gho_stephanie_64x64.svg",
 	IntroName:        "Gho-Static",
 	IntroDescription: "A simple static site generator, designed to make deploying easy",
