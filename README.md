@@ -103,6 +103,8 @@ gho-static --deploy mysite
 
 The first command rebuilds the site after you edit it. The second goes through your drafts, asking which ones to publish. The third builds the site for publishing and deploys it.
 
+When deploying to GitHub Pages, your site is served at `<username>.github.io`, and any of your other repos with Pages turned on is served at `<username>.github.io/<repo>`. If one of your content folders shares its name with such a repo, the repo's site takes over that path, and your page can't be reached. To fix this, either rename the folder, rename the repo, or turn Pages off on the repo.
+
 ## Flags
 
 - `-g, --generate <path>`: create a new site at `<path>`. If `<path>` is `content/<name>`, adds a draft page to an existing site instead. If it's `content/<name>/<post>`, adds a dated draft post.

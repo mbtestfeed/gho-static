@@ -60,8 +60,19 @@ input, button, textarea, select {
     font: inherit;
 }
 
-p, h1, h2, h3, h4, h5, h6 {
-    overflow-wrap: break-word;
+/* anywhere, unlike break-word, also lets flex items (e.g. the pager) shrink
+   past long words and URLs, so nothing pushes the page wider than the
+   screen. */
+body {
+    overflow-wrap: anywhere;
+}
+
+/* Wide code blocks and tables scroll within the content instead. */
+#content pre,
+#content table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }
 
 #content {
