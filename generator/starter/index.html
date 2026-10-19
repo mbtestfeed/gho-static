@@ -45,12 +45,19 @@
             <div>This page's published date is {{.Meta.ReleaseLine}}, so it won't be published or deployed before then.</div>
         {{- end}}
         </div>
-    {{- end}}{{template "pager" .}}{{.Content}}{{template "pager" .}}</div>
+    {{- end}}{{template "pager" .}}{{.Content}}
+    {{- with .Images}}
+        <div class="page-images">
+        {{- range .}}
+            <img src="{{$.Root}}{{.}}" alt="">
+        {{- end}}
+        </div>
+    {{- end}}{{template "pager" .}}</div>
     {{- with .IntroSidebar}}
     <div id="intro-sidebar">{{.}}</div>
     {{- end}}
-    {{- with .RecentBlogs}}
-    <div id="recent-blogs">{{.}}</div>
+    {{- with .RecentActivity}}
+    <div id="recent-activity">{{.}}</div>
     {{- end}}
     </div>
     <div id="footer">{{.Footer}}</div>

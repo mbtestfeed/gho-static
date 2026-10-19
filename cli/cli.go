@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -189,6 +190,9 @@ func Parse(args []string) (Command, error) {
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(cmd.GenPath)), "/")
 	isPage := parts[0] == "content" && len(parts) == 2
 	isPost := parts[0] == "content" && len(parts) == 3
+	if parts[0] == "content" && len(parts) > 3 {
+		return cmd, fmt.Errorf("can't create %s: pages can only be nested one level deep, as posts in a collection", cmd.GenPath)
+	}
 	if !isPage && !isPost {
 		cmd.Mode = GenerateSite
 		cmd.Prefs = gho_static.DefaultPreferences
@@ -205,6 +209,9 @@ func Parse(args []string) (Command, error) {
 		return cmd, nil
 	}
 
+	if reason := gho_static.ReservedContentName(parts[1], isPost); reason != "" {
+		return cmd, fmt.Errorf("can't create %s: %s", cmd.GenPath, reason)
+	}
 	if len(sites) == 0 {
 		return cmd, fmt.Errorf("missing site folder to create %s in", cmd.GenPath)
 	}
@@ -318,6 +325,11 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 		}
 		if cmd.Mode == GeneratePost {
 			cmd.GenPath = filepath.Join(cmd.Site, "content", cmd.collection, generator.PostFolder(cmd.PostName, now))
+			// Posts only go in collections: folders with a listing page.
+			if entries, err := os.ReadDir(filepath.Join(cmd.Site, "content", cmd.collection)); err == nil &&
+				!slices.ContainsFunc(entries, func(e os.DirEntry) bool { return !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".html") }) {
+				return cmd, fmt.Errorf("can't create %s: %s is a page, not a collection, so can't hold posts", cmd.GenPath, cmd.collection)
+			}
 		}
 		// Offer a menu link for a new first-level folder, whether it's the
 		// page itself or the parent of a new post.

@@ -1,7 +1,8 @@
 <ul class="recent-links">
-{{- range .Site.RecentBlogs}}
+{{- range .Site.RecentActivity}}
     <li>
         <a href="{{$.Root}}{{.Link}}">{{.Title}}</a>
+        <div class="recent-collection">{{.Collection}}</div>
         {{- with .Published}}
         <div class="recent-date">{{.}}</div>
         {{- end}}

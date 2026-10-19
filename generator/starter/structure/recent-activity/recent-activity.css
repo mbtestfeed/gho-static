@@ -1,5 +1,5 @@
 /* Right of the content on wider screens, between 150px and 300px wide. */
-#recent-blogs {
+#recent-activity {
     display: none;
     padding: 15px;
     border-radius: 10px;
@@ -7,7 +7,7 @@
 }
 
 @media (width > 1080px) {
-    #recent-blogs {
+    #recent-activity {
         display: block;
         grid-column: 3;
         grid-row: 1;
@@ -26,6 +26,7 @@
     margin-top: 10px;
 }
 
+.recent-collection,
 .recent-date {
     opacity: 0.6;
 }

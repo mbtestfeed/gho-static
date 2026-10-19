@@ -91,6 +91,12 @@ body {
     padding-left: 20px;
 }
 
+/* A gallery page's images, centred, at full size up to the content's
+   width. */
+.page-images img {
+    margin: 1em auto;
+}
+
 .byline {
     display: flex;
     justify-content: space-between;

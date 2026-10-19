@@ -94,14 +94,13 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 		"structure/footer/footer.html",
 	}
 	// The sidebars are optional, so sites made before them still build, and
-	// can be turned off in preferences. Recent blogs is also left out of
-	// sites without a blogs folder.
+	// can be turned off in preferences.
 	for _, sidebar := range []struct {
 		name string
 		show bool
 	}{
 		{"intro-sidebar", prefs.ShowIntroSidebar},
-		{"recent-blogs", prefs.ShowRecentBlogsSidebar && fileExists(fsys, path.Join(content.Path, "blogs"))},
+		{"recent-activity", prefs.ShowRecentActivitySidebar},
 	} {
 		if tmplPath := path.Join("structure", sidebar.name, sidebar.name+".html"); sidebar.show && fileExists(fsys, tmplPath) {
 			templates = append(templates, tmplPath)
@@ -173,7 +172,7 @@ func (ls loadedSite) layout(version string) (Page, error) {
 	if layout.Tags, err = ls.collectTags(content, opts); err != nil {
 		return Page{}, err
 	}
-	if layout.Site.RecentBlogs, err = ls.recentPages(content, opts, 3); err != nil {
+	if layout.Site.RecentActivity, err = ls.recentPages(content, opts, 6); err != nil {
 		return Page{}, err
 	}
 	return layout, nil
@@ -251,7 +250,7 @@ var sharedBases = []string{
 	"structure/header/header",
 	"structure/footer/footer",
 	"structure/intro-sidebar/intro-sidebar",
-	"structure/recent-blogs/recent-blogs",
+	"structure/recent-activity/recent-activity",
 }
 
 // planShared returns ls's non-empty shared css and js files (see
@@ -386,6 +385,9 @@ func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, err
 				md := ls.md[f]
 				p.markdown = &md
 				p.page.Previous, p.page.Next = adjacent(siblings, link)
+				if listed && path.Dir(filepath.ToSlash(rel)) == galleryDir {
+					p.page.Images = folderImages(dir.Files, root)
+				}
 			} else {
 				p.page.SubPages = listing
 				if intro, ok := ls.md[stem+".md"]; ok {

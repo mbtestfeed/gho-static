@@ -23,7 +23,9 @@ type SubPage struct {
 	Draft      bool
 	Unreleased bool // published date is still in the future
 	Summary    string // front matter summary, truncated to 200 characters
-	Tags       []Tag  // the page's tags, without their Pages
+	Tags        []Tag  // the page's tags, without their Pages
+	HeaderImage string // the first of the page folder's images, or empty if none
+	Collection  string // the listing page's folder name, capitalised with underscores as spaces
 	published  time.Time
 }
 
@@ -87,6 +89,8 @@ func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPa
 // folders opts doesn't allow, ordered most recently published first.
 func (s source) subPages(dir *file_access.ContentDir, root string, opts Options) ([]SubPage, error) {
 	var pages []SubPage
+	collection := strings.ReplaceAll(path.Base(dir.Path), "_", " ")
+	collection = strings.ToUpper(collection[:1]) + collection[1:]
 	for _, sub := range dir.Dirs {
 		for _, f := range sub.Files {
 			if !strings.EqualFold(filepath.Ext(f), ".md") {
@@ -97,12 +101,48 @@ func (s source) subPages(dir *file_access.ContentDir, root string, opts Options)
 				return nil, err
 			}
 			if link != nil {
+				link.Collection = collection
+				if images := folderImages(sub.Files, root); len(images) > 0 {
+					link.HeaderImage = images[0]
+				}
 				pages = append(pages, *link)
 			}
 		}
 	}
 	slices.SortFunc(pages, func(a, b SubPage) int { return b.published.Compare(a.published) })
 	return pages, nil
+}
+
+// galleryDir is the content folder whose subfolders' pages show each of
+// their folder's images after their markdown.
+const galleryDir = "gallery"
+
+// ReservedContentName returns why a page (or, if post, a collection) can't
+// be made in the top level content folder name, or "" if it can.
+func ReservedContentName(name string, post bool) string {
+	switch {
+	case strings.EqualFold(name, "static"):
+		return "static is the build's folder for images, css and js"
+	case strings.EqualFold(name, tagsDir):
+		return "tags is reserved for the tags page, which is built from your pages' tags"
+	case strings.EqualFold(name, galleryDir) && !post:
+		return "gallery is reserved for the gallery, so can only hold posts"
+	}
+	return ""
+}
+
+// folderImages returns the build copies (relative to the build folder) of
+// the images in files, alphabetically ignoring case. files are slash
+// separated paths under the content folder root.
+func folderImages(files []string, root string) []string {
+	var images []string
+	for _, f := range files {
+		if slices.Contains(ImageExts, strings.ToLower(filepath.Ext(f))) {
+			images = append(images, "static/"+strings.TrimPrefix(f, root+"/"))
+		}
+	}
+	slices.SortFunc(images, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return images
 }
 
 // recentPages returns the n most recently published pages listed by any

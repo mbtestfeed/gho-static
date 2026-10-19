@@ -33,6 +33,17 @@ var listingPageTemplate string
 //go:embed templates/listing.css
 var listingCSS string
 
+// galleryPageTemplate is a page linking to each post in its folder by its
+// image, after its markdown intro.
+//
+//go:embed templates/gallery.html
+var galleryPageTemplate string
+
+// galleryCSS styles a gallery page.
+//
+//go:embed templates/gallery.css
+var galleryCSS string
+
 // contentPageTemplate is a generic content page or post's front matter,
 // filled with its title, published date and draft status.
 //
@@ -98,6 +109,42 @@ var examplePosts = []pageMeta{
 	{summary: "The third example post, without tags."},
 }
 
+// demoPics are the Wikimedia Commons file names of the example gallery posts'
+// images, in post order, each saved lowercased in img/demo_pics.
+var demoPics = []string{"August_Kittens_7.jpg", "August_Kittens_9.jpg", "August_Kittens_6.jpg", "August_Kittens_4.jpg"}
+
+// demoPicCredit credits a demo picture, given its display name and Wikimedia
+// Commons file name.
+const demoPicCredit = "[%s](https://commons.wikimedia.org/wiki/File:%s) by MilasAbd on Wikimedia Commons, dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).\n"
+
+// addDemoGallery adds a gallery post for each of demoPics to files, the nth
+// published n days before now, and one with all of them published at now.
+// pics holds the pictures' contents by lowercased file name.
+func addDemoGallery(files, pics map[string]string, meta pageMeta, now time.Time) {
+	meta.tags = []string{"kittens"}
+	allDir := "content/gallery/" + PostFolder("all_kitten_pictures", now)
+	var credits string
+	for i, pic := range demoPics {
+		file := strings.ToLower(pic)
+		name := strings.TrimSuffix(file, filepath.Ext(file))
+		date := now.AddDate(0, 0, -(i + 1))
+		dir := "content/gallery/" + PostFolder(name, date)
+		credit := fmt.Sprintf(demoPicCredit, titleFor(name), pic)
+		meta.summary = "An example gallery post, with one picture."
+		addPage(files, dir+"/post", ".md", contentPage(name, date, meta)+"\n"+credit, "")
+		files[dir+"/"+file] = pics[file]
+		files[allDir+"/"+file] = pics[file]
+		credits += "- " + credit
+	}
+	meta.summary = "An example gallery post, with every picture."
+	addPage(files, allDir+"/post", ".md", contentPage("all_kitten_pictures", now, meta)+"\n"+credits, "")
+
+	// Shown in the gallery with the logo in place of an image.
+	name, date := "gallery_post_without_an_image", now.AddDate(0, 0, -(len(demoPics) + 1))
+	meta.summary, meta.tags = "An example gallery post, without a picture.", nil
+	addPage(files, "content/gallery/"+PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
+}
+
 // cleanIndexText is a clean site's home page body.
 const cleanIndexText = "You've built a static website in 'Clean' mode. There's nothing here - you're going to need to fill this out. Update your basic preferences in preferences.yaml, and add new pages using <code>gho-static --generate content/[new_page_name]</code> or new blogs using <code>gho-static --generate content/blogs/[my_new_blog_title]</code>. Please refer to mbtestfeed.github.io for additional documentation.\n"
 
@@ -106,6 +153,13 @@ const cleanIndexText = "You've built a static website in 'Clean' mode. There's n
 func addListing(files map[string]string, path, name string) {
 	addPage(files, path, ".html", listingPageTemplate, listingCSS)
 	files[path+".md"] = "# " + titleFor(name) + "\n"
+}
+
+// addGallery adds the gallery page, linking to each post in its folder by
+// its image, to files.
+func addGallery(files map[string]string) {
+	addPage(files, "content/gallery/gallery", ".html", galleryPageTemplate, galleryCSS)
+	files["content/gallery/gallery.md"] = "# Gallery\n"
 }
 
 // PostFolder returns the folder name for post name published on date.
@@ -164,6 +218,14 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 	if err := addFiles(files, images, "static/img/"); err != nil {
 		return nil, fmt.Errorf("failed to read images: %w", err)
 	}
+	// Demo pictures go in the example gallery posts, not static/img.
+	pics := map[string]string{}
+	for name, data := range files {
+		if file, ok := strings.CutPrefix(name, "static/img/demo_pics/"); ok {
+			pics[file] = data
+			delete(files, name)
+		}
+	}
 	prefsYAML, err := yaml.Marshal(prefs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode preferences: %w", err)
@@ -176,6 +238,7 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 		}
 		addPage(files, "content/blogs/"+PostFolder("first_post", now)+"/post", ".md", contentPage("first_post", now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
 		addListing(files, "content/blogs/blogs", "blogs")
+		addGallery(files)
 		return files, nil
 	}
 	files["index.md"] = "---\ntitle:\n---\n\n" + readme
@@ -190,12 +253,14 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 		meta.author, meta.edited = author, edited
 		addPage(files, "content/blogs/"+PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
 	}
+	addDemoGallery(files, pics, pageMeta{author: author, edited: edited}, now)
 	for _, name := range []string{"about", "contact"} {
 		meta := pageMeta{summary: "The site's " + name + " page.", author: author, edited: edited, tags: []string{"example tag"}}
 		addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, meta), "")
 	}
 	files["content/contact/contact.md"] += contactText
 	addListing(files, "content/blogs/blogs", "blogs")
+	addGallery(files)
 	return files, nil
 }
 

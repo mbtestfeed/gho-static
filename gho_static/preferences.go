@@ -36,7 +36,7 @@ type Preferences struct {
 	Favicon         string `yaml:"favicon"` // browser tab icon, relative to the site folder
 	DefaultAuthor   string `yaml:"default_author"` // added to new markdown pages' front matter, if set
 	ShowIntroSidebar       bool   `yaml:"show_intro_sidebar"`
-	ShowRecentBlogsSidebar bool   `yaml:"show_recent_blogs_sidebar"`
+	ShowRecentActivitySidebar bool `yaml:"show_recent_activity_sidebar"`
 	IntroSidebarImage      string `yaml:"intro_sidebar_image"` // intro sidebar image, relative to the site folder
 	IntroName        string      `yaml:"intro_name"`        // intro sidebar heading
 	IntroDescription string      `yaml:"intro_description"` // intro sidebar text
@@ -106,7 +106,7 @@ func (l SocialLinks) populated() []SocialLink {
 // DefaultPreferences are used for any setting missing from preferences.yaml.
 var DefaultPreferences = Preferences{
 	SiteName:        "Gho-Static",
-	NavLinks:        []string{"about", "blogs", "contact"},
+	NavLinks:        []string{"about", "blogs", "gallery", "contact"},
 	BannerColor:     Color{Light: "#add8e6", Dark: "#add8e6"},
 	BannerTextColor: Color{Light: "#000000", Dark: "#000000"},
 	BackgroundColor: Color{Light: "#ffffff", Dark: "#000000"},
@@ -119,7 +119,7 @@ var DefaultPreferences = Preferences{
 	Logo:            "static/img/gho_stephanie_64x64.svg",
 	Favicon:         "static/img/favicon.ico",
 	ShowIntroSidebar:       true,
-	ShowRecentBlogsSidebar: true,
+	ShowRecentActivitySidebar: true,
 	IntroSidebarImage:      "static/img/gho_stephanie_64x64.svg",
 	IntroName:        "Gho-Static",
 	IntroDescription: "A simple static site generator, designed to make deploying easy",

@@ -41,7 +41,7 @@ type Site struct {
 	IntroName        string
 	IntroDescription string
 	SocialLinks      []SocialLink // only those with a URL
-	RecentBlogs      []SubPage    // the most recently published listed pages
+	RecentActivity   []SubPage    // the most recently published listed pages
 }
 
 // VersionComment returns an HTML comment naming the build version. It's
@@ -68,7 +68,7 @@ type Page struct {
 	Content  template.HTML
 	Footer   template.HTML
 	IntroSidebar template.HTML // empty if the site has no intro sidebar template
-	RecentBlogs  template.HTML // empty if the site has no recent blogs template
+	RecentActivity template.HTML // empty if the site has no recent activity template
 	Styles   []string
 	Scripts  []string
 	SubPages []SubPage // only set for content .html templates
@@ -77,6 +77,7 @@ type Page struct {
 	Next     *SubPage  // newer sibling, for markdown pages listed by a template page
 	Tags     []Tag     // every tag on the site's built pages
 	Tag      *Tag      // only set when the tags template page is rendered as this tag's page
+	Images   []string  // only set for gallery pages: their folder's images, relative to the build folder
 }
 
 // Attribution is the footer's link back to the gho-static project.
@@ -223,7 +224,7 @@ func writePage(tmpl *template.Template, page Page, out string, assets []string) 
 		html *template.HTML
 	}{
 		{"intro-sidebar.html", &page.IntroSidebar},
-		{"recent-blogs.html", &page.RecentBlogs},
+		{"recent-activity.html", &page.RecentActivity},
 	} {
 		if tmpl.Lookup(s.name) == nil {
 			continue

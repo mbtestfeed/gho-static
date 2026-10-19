@@ -1,0 +1,36 @@
+{{.Intro}}
+<div class="gallery-links">
+{{- range .SubPages}}
+    <div class="gallery-item">
+        <a href="{{$.Root}}{{.Link}}">
+            <img class="gallery-image" src="{{$.Root}}{{or .HeaderImage "static/img/gho_stephanie_64x64.svg"}}" alt="">
+            <div class="gallery-title">{{.Title}}</div>
+        </a>
+        {{- with .Published}}
+        <div class="gallery-date">Published on {{.}}</div>
+        {{- end}}
+        {{- with .Summary}}
+        <div class="gallery-summary">{{.}}</div>
+        {{- end}}
+        {{- with .Tags}}
+        <div class="gallery-tags">
+        {{- range .}}
+            {{if .Link}}<a class="tag" href="{{$.Root}}{{.Link}}">{{.Name}}</a>{{else}}<span class="tag">{{.Name}}</span>{{end}}
+        {{- end}}
+        </div>
+        {{- end}}
+        {{- if or .Draft .Unreleased}}
+        <div class="warnings">
+        {{- if .Draft}}
+            <div class="warning-title">DRAFT</div>
+            <div>This page is a draft, so it won't be published or deployed.</div>
+        {{- end}}
+        {{- if .Unreleased}}
+            <div class="warning-title">UNRELEASED</div>
+            <div>This page's published date is {{.Published}}, so it won't be published or deployed before then.</div>
+        {{- end}}
+        </div>
+        {{- end}}
+    </div>
+{{- end}}
+</div>

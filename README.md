@@ -91,8 +91,7 @@ gho-static --generate content/my_new_collection/my_first_post_in_new_collection 
 
 This creates `content/my_new_collection` with its own listing page, offers to add it to the menu, and adds the post inside it.
 
-If you don't want a blogs section, delete the `content/blogs` folder, and remove `blogs` from `nav_links` in `preferences.yaml` to stop it being warned about. The recent blogs sidebar is left out of sites without a `content/blogs` folder.
-
+If you don't want a blogs section, delete the `content/blogs` folder, and remove `blogs` from `nav_links` in `preferences.yaml` to stop it being warned about.
 ### Build and deploy
 
 ```
@@ -175,11 +174,18 @@ To include an image in a page or post, put it in the same folder as its markdown
 
 A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing page: it lists each of its subfolders' posts, newest first, after an intro from the markdown file in the same folder. Post folders are named `YYYYMMDD_<name>`, each with a `post.md` inside. Posts in the same listing get previous and next links.
 
+### Special collections
+
+Two folder names in `content/` are reserved, and work differently from other collections:
+
+- `content/gallery`: the gallery page shows each post as a square image tile, using the first image in the post's folder (alphabetically), or the logo if it has none. Each gallery post shows its markdown, then every image in its folder, in alphabetical order.
+- `content/tags`: the tags page lists every tag used on the site, and is built again as a page for each tag, listing the pages that have it. These pages are made from the tags in your pages' front matter at each build, so the folder holds no posts of its own. Without it, tags are still shown, but don't link anywhere.
+
 ### CSS and JavaScript
 
 - `index.css` styles the whole site. The `{{...}}` values in it are filled in from `preferences.yaml`, so change colours and fonts there. Your own CSS can use them as variables, e.g. `color: var(--banner-color)`.
 - Each page's folder has a `.css` and `.js` file named after it, e.g. `content/about/about.css`. These only apply to the pages in that folder, so you can style one page without affecting the rest.
-- The header, footer and sidebars each have their own HTML and CSS in `structure/`. Turn the sidebars on or off with `show_intro_sidebar` and `show_recent_blogs_sidebar` in `preferences.yaml`.
+- The header, footer and sidebars each have their own HTML and CSS in `structure/`. Turn the sidebars on or off with `show_intro_sidebar` and `show_recent_activity_sidebar` in `preferences.yaml`.
 - Files in `static/` are copied into `build/static` as they are, for fonts, downloads or images used on several pages.
 
 Empty CSS and JavaScript files are left out of the build, so there's no need to delete them.

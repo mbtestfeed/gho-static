@@ -1,0 +1,33 @@
+/* gap only spaces the items from each other, not from the content's edges. */
+.gallery-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin-top: 2em;
+}
+
+.gallery-item {
+    width: 100%;
+}
+
+/* A square filling the item's width, cropped to fit. */
+.gallery-image {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+}
+
+.gallery-date {
+    opacity: 0.6;
+}
+
+.gallery-item .warnings {
+    margin: 5px 0 0;
+}
+
+/* Three to a row, sharing the width left after the two gaps. */
+@media (width > 1080px) {
+    .gallery-item {
+        width: calc((100% - 2em) / 3);
+    }
+}
