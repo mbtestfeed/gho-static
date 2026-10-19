@@ -31,6 +31,43 @@
     }
 }
 
+/* A page with a ticked #mode-toggle checkbox (as on the themes showcase
+   pages) swaps to the opposite of the visitor's light or dark mode, until
+   the page is left or reloaded. */
+:root:has(#mode-toggle:checked) {
+    color-scheme: dark;
+    --banner-color: {{.BannerColor.Dark}};
+    --banner-text-color: {{.BannerTextColor.Dark}};
+    --background-color: {{.BackgroundColor.Dark}};
+    --text-color: {{.TextColor.Dark}};
+    --link-color: {{.Link.Dark}};
+    --link-clicked-color: {{.LinkClicked.Dark}};
+    --tag-color: {{.TagColor.Dark}};
+    --tag-text-color: {{.TagTextColor.Dark}};
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:has(#mode-toggle:checked) {
+        color-scheme: light;
+        --banner-color: {{.BannerColor.Light}};
+        --banner-text-color: {{.BannerTextColor.Light}};
+        --background-color: {{.BackgroundColor.Light}};
+        --text-color: {{.TextColor.Light}};
+        --link-color: {{.Link.Light}};
+        --link-clicked-color: {{.LinkClicked.Light}};
+        --tag-color: {{.TagColor.Light}};
+        --tag-text-color: {{.TagTextColor.Light}};
+    }
+}
+
+.mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    margin: 1em 0;
+    cursor: pointer;
+}
+
 html, body {
     height: 100%;
 }

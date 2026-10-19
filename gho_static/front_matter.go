@@ -17,6 +17,7 @@ type FrontMatter struct {
 	Edited    string
 	Draft     bool
 	TOC       bool     // add a table of contents to the top of the page
+	Theme     string   // style the page with this theme instead of the site's, if it's downloaded
 	Tags      []string // as [a, b], a, b or "- a" lines beneath
 
 	Unreleased bool // Published is set and after the build's time; set by the build, not parsed
@@ -62,6 +63,8 @@ func parseFrontMatter(md []byte) (FrontMatter, []byte) {
 			fm.Draft = val == "true"
 		case "toc":
 			fm.TOC = val == "true"
+		case "theme":
+			fm.Theme = val
 		}
 	}
 	return fm, []byte(strings.TrimLeft(body, "\n"))

@@ -1,3 +1,5 @@
+# What the theme looks like, shown in the themes showcase.
+summary: A slightly more modern look (at the time of writing), like you might see on a company's site, with cards, soft shadows and an indigo accent.
 # Colours (for light and dark mode) and font, filled into this theme's CSS.
 banner_color: # header, footer and menu background
     light: '#ffffff'

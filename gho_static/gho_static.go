@@ -31,6 +31,7 @@ type NavLink struct {
 // Site holds data shared by every page.
 type Site struct {
 	Title    string
+	Theme    string // the theme selected in settings.yaml
 	Home     string // link to the home page, relative to the build folder
 	Version  string // random UUID identifying this build
 	Logo     string // logo image, relative to the build folder, or empty if none
@@ -78,6 +79,17 @@ type Page struct {
 	Tags     []Tag     // every tag on the site's built pages
 	Tag      *Tag      // only set when the tags template page is rendered as this tag's page
 	Images   []string  // only set for gallery pages: their folder's images, relative to the build folder
+}
+
+// ThemePage returns the sub-page using theme, as set in its front matter,
+// or nil if there's none (as when the theme isn't downloaded).
+func (p Page) ThemePage(theme string) *SubPage {
+	for i, s := range p.SubPages {
+		if s.Theme == theme {
+			return &p.SubPages[i]
+		}
+	}
+	return nil
 }
 
 // Attribution is the footer's link back to the gho-static project.
@@ -250,8 +262,9 @@ func writePage(tmpl *template.Template, page Page, out string, assets []string) 
 
 // Options controls which content is built.
 type Options struct {
-	Preview bool // leave out drafts and unreleased pages, as publishing does, but keep local links
-	Publish bool // leave out drafts and unreleased pages, and write pages as folder/index.html linked by folder
+	Preview    bool // leave out drafts and unreleased pages, as publishing does, but keep local links
+	Publish    bool // leave out drafts and unreleased pages, and write pages as folder/index.html linked by folder
+	WithThemes bool // keep the themes showcase collection when previewing or publishing
 
 	Output output.Output // where build warnings are written
 	Now    time.Time     // the build's time, deciding which pages are unreleased, or the current time if zero
@@ -322,6 +335,27 @@ func (s source) folderStatus(dir string) (draft, unreleased bool) {
 		}
 	}
 	return draft, unreleased
+}
+
+// ShowcaseDir is the content folder of the themes showcase collection, left
+// out when previewing or publishing unless asked for.
+const ShowcaseDir = "themes"
+
+// leftOut reports whether the content folder dir (under the content folder
+// root) isn't built: it's in the themes showcase when previewing or
+// publishing without opts.WithThemes, or a markdown file directly in it uses
+// a theme that isn't downloaded.
+func (s source) leftOut(dir, root string, opts Options) bool {
+	if rel := strings.TrimPrefix(dir, root+"/"); (opts.Preview || opts.Publish) && !opts.WithThemes &&
+		(rel == ShowcaseDir || strings.HasPrefix(rel, ShowcaseDir+"/")) {
+		return true
+	}
+	for p, f := range s.md {
+		if path.Dir(p) == dir && f.Meta.Theme != "" && !hasTheme(s, f.Meta.Theme) {
+			return true
+		}
+	}
+	return false
 }
 
 // warnUnpublished writes a warning for each markdown page directly in dir

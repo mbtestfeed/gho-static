@@ -55,7 +55,6 @@ type loadedSite struct {
 	opts    Options
 	content *file_access.ContentDir
 	prefs   Preferences
-	theme   ThemePreferences
 	tmpl    *template.Template // the layout and structure templates
 	index   mdFile             // the home page
 }
@@ -89,12 +88,8 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 	if err != nil {
 		return loadedSite{}, err
 	}
-	if prefs.Theme == "" || !file_access.FileExists(fsys, prefs.themeDir()) {
+	if !hasTheme(fsys, prefs.Theme) {
 		return loadedSite{}, fmt.Errorf("theme %q in settings.yaml has no folder in themes/", prefs.Theme)
-	}
-	theme, err := readOver(fsys, path.Join(prefs.themeDir(), "theme_preferences.yaml"), DefaultThemePreferences)
-	if err != nil {
-		return loadedSite{}, err
 	}
 
 	templates := []string{
@@ -126,7 +121,7 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 	}
 	meta, body := parseFrontMatter(indexBytes)
 	meta.Unreleased = meta.IsUnreleased(now)
-	return loadedSite{source: s, opts: opts, content: content, prefs: prefs, theme: theme, tmpl: tmpl, index: mdFile{Meta: meta, Body: body}}, nil
+	return loadedSite{source: s, opts: opts, content: content, prefs: prefs, tmpl: tmpl, index: mdFile{Meta: meta, Body: body}}, nil
 }
 
 // layout returns the page data shared by every page of ls, marked with
@@ -144,7 +139,7 @@ func (ls loadedSite) layout(version string) (Page, error) {
 		}
 		src := srcs[0]
 		draft, unreleased := ls.folderStatus(path.Dir(src))
-		if opts.skip(draft, unreleased) {
+		if opts.skip(draft, unreleased) || ls.leftOut(path.Dir(src), content.Path, opts) {
 			continue
 		}
 		_, link, err := ls.pagePath(src, content.Path, opts.Publish)
@@ -161,6 +156,7 @@ func (ls loadedSite) layout(version string) (Page, error) {
 	layout := Page{
 		Site: &Site{
 			Title:    prefs.SiteName,
+			Theme:    prefs.Theme,
 			Home:     home,
 			Version:  version,
 			Logo:     prefs.Logo,
@@ -225,19 +221,32 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 		}
 	}
 
-	sharedFiles, err := ls.planShared()
-	if err != nil {
-		return err
-	}
-	var shared []string
-	for _, f := range sharedFiles {
-		if err := os.WriteFile(filepath.Join(buildDir, "static", f.name), f.data, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", f.name, err)
+	// The site's theme, and any other downloaded theme a page uses.
+	themes := []string{ls.prefs.Theme}
+	for _, f := range ls.md {
+		if t := f.Meta.Theme; t != "" && !slices.Contains(themes, t) && hasTheme(ls, t) {
+			themes = append(themes, t)
 		}
-		shared = append(shared, "static/"+f.name)
+	}
+	shared := map[string][]string{} // each theme's shared files, relative to the build folder
+	for _, theme := range themes {
+		files, err := ls.planShared(theme)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			out := filepath.Join(buildDir, "static", filepath.FromSlash(f.name))
+			if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
+				return fmt.Errorf("failed to create %s: %w", filepath.Dir(out), err)
+			}
+			if err := os.WriteFile(out, f.data, 0644); err != nil {
+				return fmt.Errorf("failed to write %s: %w", f.name, err)
+			}
+			shared[theme] = append(shared[theme], "static/"+f.name)
+		}
 	}
 
-	if err := writeMarkdownPage(ls.tmpl, layout, ls.index, filepath.Join(buildDir, "index.html"), "", shared); err != nil {
+	if err := writeMarkdownPage(ls.tmpl, layout, ls.index, filepath.Join(buildDir, "index.html"), "", shared[ls.prefs.Theme]); err != nil {
 		return err
 	}
 
@@ -253,24 +262,33 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 var structureParts = []string{"header", "footer", "intro-sidebar", "recent-activity"}
 
 // sharedFiles returns the paths of the css and js files linked from every
-// page, in order: the theme's theme.css and the layout's index.js, then each
-// structure part's css (at the same path in the theme) and js (beside its
-// template).
-func (ls loadedSite) sharedFiles() []string {
-	files := []string{path.Join(ls.prefs.themeDir(), "theme.css"), "index.js"}
+// page styled with theme, in order: the theme's theme.css and the layout's
+// index.js, then each structure part's css (at the same path in the theme)
+// and js (beside its template).
+func sharedFiles(theme string) []string {
+	files := []string{path.Join(themeDir(theme), "theme.css"), "index.js"}
 	for _, p := range structureParts {
 		base := path.Join("structure", p, p)
-		files = append(files, path.Join(ls.prefs.themeDir(), base+".css"), base+".js")
+		files = append(files, path.Join(themeDir(theme), base+".css"), base+".js")
 	}
 	return files
 }
 
-// planShared returns ls's non-empty shared css and js files (see
-// sharedFiles), to copy into the build's static folder, with theme
-// preference values filled into the css.
-func (ls loadedSite) planShared() ([]staticFile, error) {
+// themeBuildDir is the folder, within the build's static folder, each
+// theme's css is copied into.
+const themeBuildDir = "_theme"
+
+// planShared returns ls's non-empty shared css and js files for pages
+// styled with theme (see sharedFiles), to copy into the build's static
+// folder, with the theme's preference values filled into the css. The css
+// goes in a folder for the theme, so several themes can be built at once.
+func (ls loadedSite) planShared(theme string) ([]staticFile, error) {
+	prefs, err := readOver(ls, path.Join(themeDir(theme), "theme_preferences.yaml"), DefaultThemePreferences)
+	if err != nil {
+		return nil, err
+	}
 	var files []staticFile
-	for _, f := range ls.sharedFiles() {
+	for _, f := range sharedFiles(theme) {
 		name := path.Base(f)
 		data, err := fs.ReadFile(ls, f)
 		if os.IsNotExist(err) || (err == nil && len(data) == 0) {
@@ -280,9 +298,10 @@ func (ls loadedSite) planShared() ([]staticFile, error) {
 			return nil, fmt.Errorf("failed to read %s: %w", f, err)
 		}
 		if utils.HasExt(f, ".css") {
-			if data, err = fillCSS(data, name, ls.theme); err != nil {
+			if data, err = fillCSS(data, name, prefs); err != nil {
 				return nil, err
 			}
+			name = path.Join(themeBuildDir, theme, name)
 		}
 		files = append(files, staticFile{name: name, data: data})
 	}
@@ -319,8 +338,9 @@ type plannedPage struct {
 // has none of its own files built, as does a listed folder (one whose parent
 // has a template page) with no published date when publishing. Markdown
 // pages are linked to their neighbours in their parent folder's template
-// page listing.
-func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, error) {
+// page listing. Pages are linked to their own theme's shared files, if
+// their front matter sets one, otherwise the site theme's.
+func (ls loadedSite) planContent(layout Page, shared map[string][]string) (contentPlan, error) {
 	opts := ls.opts
 	var plan contentPlan
 	root := ls.content.Path
@@ -343,6 +363,7 @@ func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, err
 		if skip {
 			ls.warnUnpublished(dir)
 		}
+		skip = skip || ls.leftOut(dir.Path, root, opts)
 		if listed && opts.Publish && !skip {
 			if undated := ls.undatedPage(dir); undated != "" {
 				opts.Output.Errorf("%s has no published date, so it wasn't published", undated)
@@ -354,7 +375,7 @@ func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, err
 			return nil
 		}
 
-		assets := append([]string{}, shared...)
+		var assets []string // the folder's own css and js
 		for _, f := range dir.Files {
 			isAsset := utils.HasExt(f, assetExts...)
 			if !isAsset && !utils.HasExt(f, ImageExts...) {
@@ -388,11 +409,14 @@ func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, err
 			if err != nil {
 				return err
 			}
-			p := plannedPage{src: f, file: file, page: layout, imgDir: rel, assets: assets}
+			p := plannedPage{src: f, file: file, page: layout, imgDir: rel, assets: slices.Concat(shared[ls.prefs.Theme], assets)}
 			p.page.Root = rootFor(file)
 			if ext == ".md" {
 				md := ls.md[f]
 				p.markdown = &md
+				if md.Meta.Theme != "" {
+					p.assets = slices.Concat(shared[md.Meta.Theme], assets)
+				}
 				p.page.Previous, p.page.Next = adjacent(siblings, link)
 				if listed && path.Dir(filepath.ToSlash(rel)) == galleryDir {
 					p.page.Images = folderImages(dir.Files, root)
@@ -409,7 +433,7 @@ func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, err
 			// The tags page is built again as each tag's own page.
 			if rel == tagsDir && strings.EqualFold(filepath.Base(f), tagsDir+".html") {
 				for _, tag := range layout.Tags {
-					t := plannedPage{src: f, file: tag.file, page: layout, assets: assets}
+					t := plannedPage{src: f, file: tag.file, page: layout, assets: p.assets}
 					t.page.Root, t.page.Tag = rootFor(tag.file), &tag
 					plan.pages = append(plan.pages, t)
 				}

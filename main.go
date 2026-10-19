@@ -23,11 +23,12 @@ import (
 //go:embed img
 var img embed.FS
 
-// defaultTheme holds the theme copied into each generated site's themes
-// folder. Other themes are downloaded with --use-theme or --get-all-themes.
+// themes holds the default theme, copied into each generated site's themes
+// folder, and every theme's theme_preferences.yaml, for the themes showcase.
+// Other themes are downloaded with --use-theme or --get-all-themes.
 //
-//go:embed themes/default_developer_ugly
-var defaultTheme embed.FS
+//go:embed themes/default_developer_ugly themes/*/theme_preferences.yaml
+var themes embed.FS
 
 // readme is the home page of each generated site, other than clean ones.
 //
@@ -147,6 +148,10 @@ func main() {
 func (a app) run(args []string) error {
 	term, now := a.term, a.now
 	cmd, err := cli.Parse(args)
+	if err == nil && cmd.Mode == cli.Help {
+		fmt.Fprint(term.Out, cli.Usage)
+		return nil
+	}
 	if err == nil {
 		cmd, err = cli.Resolve(cmd, term, now)
 	}
@@ -175,7 +180,7 @@ func (a app) run(args []string) error {
 			return err
 		}
 		images, _ := fs.Sub(img, "img")
-		themes, _ := fs.Sub(defaultTheme, "themes")
+		themes, _ := fs.Sub(themes, "themes")
 		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, themes, readme, cmd.Clean)
 	case cli.GeneratePage, cli.GeneratePost:
 		var prefs gho_static.Preferences
@@ -259,6 +264,11 @@ func (a app) run(args []string) error {
 		// Set up (pulling any existing repo) before building into it.
 		if err := cmd.Deployer.Setup(filepath.Join(cmd.GenPath, "build")); err != nil {
 			return fmt.Errorf("%s was generated, but its build folder couldn't be set up for deployment: %w", cmd.GenPath, err)
+		}
+		if cmd.AllThemes {
+			if _, err := generator.GetThemes(cmd.GenPath, nil, term.Output); err != nil {
+				return fmt.Errorf("%s was generated, but its themes couldn't be downloaded: %w", cmd.GenPath, err)
+			}
 		}
 		if version, err = a.build(cmd.GenPath, cmd.Options); err != nil {
 			return err

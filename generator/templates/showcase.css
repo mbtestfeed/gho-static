@@ -1,0 +1,21 @@
+.theme-links {
+    list-style: none;
+    margin-top: 2em;
+}
+
+.theme-links li {
+    margin-bottom: 20px;
+}
+
+.theme-name {
+    font-weight: bold;
+}
+
+.theme-missing {
+    opacity: 0.6;
+}
+
+.theme-current {
+    font-weight: bold;
+    color: var(--link-color);
+}

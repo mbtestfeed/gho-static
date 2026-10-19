@@ -1,3 +1,5 @@
+# What the theme looks like, shown in the themes showcase.
+summary: Plain and functional, with light blue banners. Gho-Static's default theme.
 # Colours (for light and dark mode) and font, filled into this theme's CSS.
 banner_color: # header, footer and menu background
     light: '#add8e6'

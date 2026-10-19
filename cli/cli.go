@@ -19,6 +19,7 @@ const Usage = `Usage: gho-static [flags] <site folder>
 Builds the site in <site folder> into <site folder>/build.
 
 Flags:
+  -h, --help, -u, --usage Print this usage text and exit.
   -g, --generate <path>   Create a new folder at <path>, fill it with a default
                           starter site and build it into <path>/build. Fails if
                           <path> already exists. If <path> is content/<name>,
@@ -74,7 +75,11 @@ Flags:
                           <site folder>/themes first if it isn't there.
   --get-all-themes        Download every theme in the Gho-Static GitHub repo
                           into <site folder>/themes, replacing any already
-                          there.
+                          there. Can also be used with -g, to download them
+                          into the new site.
+  --publish-with-themes   With --publish, --preview-publish or --deploy, keep
+                          the themes showcase collection (content/themes),
+                          which is otherwise left out.
   --list-themes           List the themes in the Gho-Static GitHub repo and in
                           <site folder>/themes, marking which are downloaded
                           and which one the site uses.
@@ -96,6 +101,7 @@ const (
 	UseTheme                 // switch Site to Theme, downloading it if missing, then build Site
 	GetAllThemes             // download every theme into Site's themes folder
 	ListThemes               // list the themes that can be downloaded, and Site's own
+	Help                     // print Usage, and do nothing else
 )
 
 // Command is the work requested on the command line.
@@ -105,6 +111,7 @@ type Command struct {
 	GenPath  string // folder to generate
 	PostName string // only set for GeneratePost
 	Theme    string // only set for UseTheme
+	AllThemes bool  // with GenerateSite, also download every theme into the new site (--get-all-themes)
 	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
 	Yes      bool   // answer yes to every question (--yes)
 	Clean    bool   // generate without example content (--clean)
@@ -131,6 +138,8 @@ func Parse(args []string) (Command, error) {
 	generate, deploying, drafts, useTheme, allThemes, listThemes := false, false, false, false, false, false
 	for _, f := range flags {
 		switch f.Key {
+		case "h", "help", "u", "usage":
+			return Command{Mode: Help}, nil
 		case "g", "generate":
 			generate, cmd.GenPath = true, f.Val
 			continue
@@ -165,6 +174,8 @@ func Parse(args []string) (Command, error) {
 			continue
 		case "preview-publish":
 			cmd.Options.Preview = true
+		case "publish-with-themes":
+			cmd.Options.WithThemes = true
 		case "p", "publish":
 			cmd.Options.Publish = true
 		case "y", "yes":
@@ -176,7 +187,11 @@ func Parse(args []string) (Command, error) {
 		case "drafts":
 			drafts = true
 		default:
-			continue
+			flag := "--" + f.Key
+			if len(f.Key) == 1 {
+				flag = "-" + f.Key
+			}
+			return cmd, fmt.Errorf("unknown flag %s. Run gho-static --help to see the flags it takes.", flag)
 		}
 		// Boolean flags take no value, so ParseArgs may have consumed a
 		// following positional arg as one.
@@ -197,8 +212,8 @@ func Parse(args []string) (Command, error) {
 		return cmd, fmt.Errorf("missing path argument")
 	}
 
-	if generate && (useTheme || allThemes || listThemes) {
-		return cmd, fmt.Errorf("--use-theme, --get-all-themes and --list-themes can't be used with --generate. Generate the site first, then rerun with just the theme flag.")
+	if generate && (useTheme || listThemes) {
+		return cmd, fmt.Errorf("--use-theme and --list-themes can't be used with --generate. Generate the site first, then rerun with just the theme flag.")
 	}
 	if !generate {
 		cmd.Site = positional[0]
@@ -228,7 +243,7 @@ func Parse(args []string) (Command, error) {
 		return cmd, fmt.Errorf("can't create %s: pages can only be nested one level deep, as posts in a collection", cmd.GenPath)
 	}
 	if !isPage && !isPost {
-		cmd.Mode = GenerateSite
+		cmd.Mode, cmd.AllThemes = GenerateSite, allThemes
 		cmd.Prefs = gho_static.DefaultPreferences
 		if cmd.Clean {
 			cmd.Prefs.SiteName = filepath.Base(filepath.Clean(cmd.GenPath))
@@ -243,6 +258,9 @@ func Parse(args []string) (Command, error) {
 		return cmd, nil
 	}
 
+	if allThemes {
+		return cmd, fmt.Errorf("--get-all-themes can't be used when generating a page or post. Run it on its own, e.g. gho-static --get-all-themes mysite")
+	}
 	if reason := gho_static.ReservedContentName(parts[1], isPost); reason != "" {
 		return cmd, fmt.Errorf("can't create %s: %s", cmd.GenPath, reason)
 	}

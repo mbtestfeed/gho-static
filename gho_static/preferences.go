@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"gho-static/utils/file_access"
 	"gho-static/utils/yaml_edit"
 )
 
@@ -42,6 +43,7 @@ type Preferences struct {
 // ThemePreferences are a theme's colours and font, read from its
 // theme_preferences.yaml and filled into its css.
 type ThemePreferences struct {
+	Summary         string `yaml:"summary"`           // what the theme looks like, for the themes showcase
 	BannerColor     Color  `yaml:"banner_color"`      // header, footer and menu background
 	BannerTextColor Color  `yaml:"banner_text_color"` // text and links in the header, footer and menu
 	BackgroundColor Color  `yaml:"background_color"`
@@ -281,10 +283,15 @@ func fillCSS(css []byte, name string, prefs ThemePreferences) ([]byte, error) {
 	return []byte(sb.String()), nil
 }
 
-// themeDir returns the folder of p's theme, holding its css and theme
+// themeDir returns the folder of theme, holding its css and theme
 // preferences.
-func (p Preferences) themeDir() string {
-	return path.Join("themes", p.Theme)
+func themeDir(theme string) string {
+	return path.Join("themes", theme)
+}
+
+// hasTheme reports whether the site in fsys has theme in its themes folder.
+func hasTheme(fsys fs.FS, theme string) bool {
+	return theme != "" && file_access.FileExists(fsys, themeDir(theme))
 }
 
 // navLinkNames returns the content folder names listed in NavLinks, without

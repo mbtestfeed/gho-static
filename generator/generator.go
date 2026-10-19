@@ -36,6 +36,28 @@ var listingPageTemplate string
 //go:embed templates/listing.css
 var listingCSS string
 
+// showcasePageTemplate is the themes showcase page, listing the themes known
+// when Gho-Static was built (filled in at %s) after its markdown intro.
+//
+//go:embed templates/showcase.html
+var showcasePageTemplate string
+
+// showcaseCSS styles the themes showcase page.
+//
+//go:embed templates/showcase.css
+var showcaseCSS string
+
+// showcaseIntro is the themes showcase page's markdown intro.
+//
+//go:embed templates/showcase.md
+var showcaseIntro string
+
+// showcasePost is a theme's showcase post body, given the theme's name, and
+// an example image's file name and credit.
+//
+//go:embed templates/showcase_post.md
+var showcasePost string
+
 // galleryPageTemplate is a page linking to each post in its folder by its
 // image, after its markdown intro.
 //
@@ -63,6 +85,7 @@ var contactText string
 // pages have only front matter, without a heading.
 type pageMeta struct {
 	summary, author, edited string
+	theme                   string // styles the page instead of the site's theme
 	draft, toc, clean       bool
 	tags                    []string
 }
@@ -91,7 +114,7 @@ func frontMatter(name string, date time.Time, meta pageMeta) string {
 		summary = " " + summary
 	}
 	return fmt.Sprintf(contentPageTemplate, utils.TitleFor(name), summary, line("author", meta.author), date.Format("2006-01-02"),
-		line("edited", meta.edited), meta.draft, meta.toc, strings.Join(meta.tags, ", "))
+		line("edited", meta.edited), meta.draft, meta.toc, strings.Join(meta.tags, ", "), line("theme", meta.theme))
 }
 
 // examplePosts are the front matter of each example blog post, in order.
@@ -207,8 +230,9 @@ func siteFiles(prefs gho_static.Preferences, images, themes fs.FS, readme string
 	if err := addFiles(files, images, "static/img/"); err != nil {
 		return nil, fmt.Errorf("failed to read images: %w", err)
 	}
-	if err := addFiles(files, themes, "themes/"); err != nil {
-		return nil, fmt.Errorf("failed to read themes: %w", err)
+	defaultTheme, _ := fs.Sub(themes, gho_static.DefaultPreferences.Theme)
+	if err := addFiles(files, defaultTheme, "themes/"+gho_static.DefaultPreferences.Theme+"/"); err != nil {
+		return nil, fmt.Errorf("failed to read the default theme: %w", err)
 	}
 	// Demo pictures go in the example gallery posts, not static/img.
 	pics := map[string]string{}
@@ -217,6 +241,14 @@ func siteFiles(prefs gho_static.Preferences, images, themes fs.FS, readme string
 			pics[file] = data
 			delete(files, name)
 		}
+	}
+	if !clean {
+		// The themes showcase goes after the gallery in the menu.
+		i := slices.Index(prefs.NavLinks, "gallery") + 1
+		if i == 0 {
+			i = len(prefs.NavLinks)
+		}
+		prefs.NavLinks = slices.Insert(slices.Clone(prefs.NavLinks), i, gho_static.ShowcaseDir)
 	}
 	prefsYAML, err := yaml.Marshal(prefs)
 	if err != nil {
@@ -253,6 +285,9 @@ func siteFiles(prefs gho_static.Preferences, images, themes fs.FS, readme string
 	files["content/contact/contact.md"] += contactText
 	addListing(files, "content/blogs/blogs", "blogs")
 	addGallery(files)
+	if err := addShowcase(files, pics, themes, pageMeta{author: author, edited: edited}, now); err != nil {
+		return nil, err
+	}
 	return files, nil
 }
 

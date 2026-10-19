@@ -109,6 +109,7 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 
 ## Flags
 
+- `-h, --help, -u, --usage`: print the usage text and exit.
 - `-g, --generate <path>`: create a new site at `<path>`. If `<path>` is `content/<name>`, adds a draft page to an existing site instead. If it's `content/<name>/<post>`, adds a dated draft post.
 - `-c, --clean`: with `-g`, generate markdown files with only their front matter, and a new site without the example content.
 - `-y, --yes`: with `-g`, don't ask for a deployment method. With `--deploy`, fail instead of asking for anything that isn't set up.
@@ -119,10 +120,11 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 - `--deployment-method <github-pages|none>`: set up the site's build folder for deploying, and save the method in `settings.yaml`.
 - `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `settings.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
 - `--use-theme <name>`: switch the site to the theme `<name>` and rebuild it, downloading the theme first if it isn't in `themes/`. See Themes, below.
-- `--get-all-themes`: download every theme into `themes/`, replacing any already there.
+- `--get-all-themes`: download every theme into `themes/`, replacing any already there. Can also be used with `-g`, to download them into the new site.
+- `--publish-with-themes`: with `--publish`, `--preview-publish` or `--deploy`, keep the themes showcase collection, which is otherwise left out.
 - `--list-themes`: list the themes that can be downloaded and those in `themes/`, marking which are downloaded and which one the site uses.
 
-Single-letter flags can be combined, e.g. `-cy`. Run `gho-static` with no arguments for the full usage text.
+Single-letter flags can be combined, e.g. `-cy`. Run `gho-static --help` for the full usage text.
 
 ## Editing your site
 
@@ -163,6 +165,10 @@ Each theme holds:
 
 To make your own theme, copy a theme's folder, rename it, edit its files, and set `theme` to its name.
 
+A page can be styled with a different theme from the rest of the site by setting `theme: <name>` in its front matter. If that theme isn't in `themes/`, the page is left out of the build.
+
+New sites (other than clean ones) have a themes showcase collection, in `content/themes`, linked in the menu after the gallery. It lists the themes available when your copy of Gho-Static was built, and has a page for each downloaded one, styled with that theme. It's left out when publishing or deploying unless you add `--publish-with-themes`.
+
 ### Markdown pages
 
 Each page is a folder in `content/` holding a markdown file named after it, e.g. `content/about/about.md`. Each page starts with front matter:
@@ -189,6 +195,7 @@ Your content, in markdown.
 - `author`, `published`, `edited`: shown in the byline. Pages without a published date are asked for one when building.
 - `draft: true`: shows the page with a DRAFT warning, and leaves it out when publishing, deploying or building with `--preview-publish`.
 - `toc: true`: adds a table of contents built from the page's headings.
+- `theme`: styles the page with this theme instead of the site's (see Themes, below).
 - `tags`: a list of tags, each linking to a page listing everything with that tag.
 
 The body is standard markdown, with tables, fenced code blocks, footnotes and strikethrough. HTML can be used as well.
@@ -201,7 +208,9 @@ A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing 
 
 ### Special collections
 
-Two folder names in `content/` are reserved, and work differently from other collections:
+Three folder names in `content/` work differently from other collections:
+
+- `content/themes`: the themes showcase (see Themes, above), left out when publishing or deploying unless you add `--publish-with-themes`.
 
 - `content/gallery`: the gallery page shows each post as a square image tile, using the first image in the post's folder (alphabetically), or a grey placeholder image if it has none. Each gallery post shows its markdown, then every image in its folder, in alphabetical order.
 - `content/tags`: the tags page lists every tag used on the site, and is built again as a page for each tag, listing the pages that have it. These pages are made from the tags in your pages' front matter at each build, so the folder holds no posts of its own. Without it, tags are still shown, but don't link anywhere.

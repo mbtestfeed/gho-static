@@ -27,6 +27,7 @@ type SubPage struct {
 	Tags        []Tag  // the page's tags, without their Pages
 	HeaderImage string // the first of the page folder's images, or empty if none
 	Collection  string // the listing page's folder name, capitalised with underscores as spaces
+	Theme       string // the theme the page is styled with, if its front matter sets one
 	published  time.Time
 }
 
@@ -40,7 +41,7 @@ const summaryLength = 200
 // page, so isn't published without a date.
 func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPage, error) {
 	draft, unreleased := s.folderStatus(path.Dir(mdPath))
-	if opts.skip(draft, unreleased) {
+	if opts.skip(draft, unreleased) || s.leftOut(path.Dir(mdPath), root, opts) {
 		return nil, nil
 	}
 	meta := s.md[mdPath].Meta
@@ -71,6 +72,7 @@ func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPa
 		Unreleased: meta.Unreleased,
 		Summary:    utils.Truncate(meta.Summary, summaryLength),
 		Tags:       tags,
+		Theme:      meta.Theme,
 		published:  published,
 	}, nil
 }
