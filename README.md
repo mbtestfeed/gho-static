@@ -2,6 +2,8 @@
 
 Gho-Static is a simple static site generator, designed to make deploying easy. You write your pages in markdown, style them with CSS, and Gho-Static builds them into a plain HTML site you can open locally or publish to GitHub Pages with a single command.
 
+Gho-Static is intentionally simple. It's for making and deploying websites without interactive content, such as brochureware, blogs or portfolios. By design, it doesn't use any JavaScript by default. You're welcome to add your own JavaScript to pages for more advanced features, if you can write it yourself, but that's at your own risk. If Gho-Static doesn't do what you need, you're welcome to suggest or make changes on [GitHub](https://github.com/mbtestfeed/gho-static), but [it may just not be for you](https://www.merriam-webster.com/slang/bean-soup-theory), and that's okay.
+
 ## Requirements
 
 - [git](https://git-scm.com/downloads) installed and available from the command line.
@@ -192,4 +194,6 @@ Empty CSS and JavaScript files are left out of the build, so there's no need to 
 
 ## More
 
-See [mbtestfeed.github.io](https://mbtestfeed.github.io) for more documentation, and report bugs or request features on the [issues page](https://github.com/mbtestfeed/gho-static/issues).
+See [mbtestfeed.github.io](https://mbtestfeed.github.io) for more documentation, and report bugs or request features on the [issues page](https://github.com/mbtestfeed/gho-static/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute changes.
+
+Gho-Static is free to use for any purpose, at your own risk, under the [MIT License](LICENSE.md). If you build a site with it, please keep the "Built with" link in its footer.
