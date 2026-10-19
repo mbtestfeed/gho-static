@@ -1,0 +1,26 @@
+# Colours (for light and dark mode) and font, filled into this theme's CSS.
+banner_color: # header, footer and menu background
+    light: '#add8e6'
+    dark: '#add8e6'
+banner_text_color: # text and links in the header, footer and menu
+    light: '#000000'
+    dark: '#000000'
+background_color:
+    light: '#ffffff'
+    dark: '#000000'
+text_color:
+    light: '#000000'
+    dark: '#ffffff'
+link:
+    light: '#0000ee'
+    dark: '#8ab4f8'
+link_clicked:
+    light: '#551a8b'
+    dark: '#c58af9'
+tag_color: # tag pill background
+    light: '#add8e6'
+    dark: '#add8e6'
+tag_text_color: # tag pill text
+    light: '#000000'
+    dark: '#000000'
+font: sans-serif

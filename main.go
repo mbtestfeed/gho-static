@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"gho-static/cli"
@@ -20,6 +22,12 @@ import (
 //
 //go:embed img
 var img embed.FS
+
+// defaultTheme holds the theme copied into each generated site's themes
+// folder. Other themes are downloaded with --use-theme or --get-all-themes.
+//
+//go:embed themes/default_developer_ugly
+var defaultTheme embed.FS
 
 // readme is the home page of each generated site, other than clean ones.
 //
@@ -84,6 +92,48 @@ func (a app) publishDrafts(site string, yes bool) error {
 	return nil
 }
 
+// listThemes lists the themes in the Gho-Static repo and in site's themes
+// folder, marking which are downloaded and which one site uses (as set in
+// the settings file at prefsPath).
+func (a app) listThemes(site, prefsPath string) error {
+	remote, err := generator.ListThemes(a.term.Output)
+	if err != nil {
+		return err
+	}
+	prefs, err := gho_static.ReadPreferences(prefsPath)
+	if err != nil {
+		return err
+	}
+	var local []string
+	entries, _ := os.ReadDir(filepath.Join(site, "themes"))
+	for _, e := range entries {
+		if e.IsDir() {
+			local = append(local, e.Name())
+		}
+	}
+	names := slices.Concat(remote, local)
+	slices.Sort(names)
+	for _, name := range slices.Compact(names) {
+		var notes []string
+		if slices.Contains(local, name) {
+			notes = append(notes, "downloaded")
+		}
+		if !slices.Contains(remote, name) {
+			notes = append(notes, "local only")
+		}
+		if name == prefs.Theme {
+			notes = append(notes, "in use")
+		}
+		line := "    " + name
+		if len(notes) > 0 {
+			line += " (" + strings.Join(notes, ", ") + ")"
+		}
+		a.term.Infof("%s\n", line)
+	}
+	a.term.Infof("Switch theme with --use-theme <name>, or download them all with --get-all-themes.\n")
+	return nil
+}
+
 func main() {
 	a := app{term: cli.Stdio(), now: time.Now()}
 	if err := a.run(os.Args[1:]); err != nil {
@@ -107,7 +157,7 @@ func (a app) run(args []string) error {
 
 	// Added before generating, so the page isn't made if its menu link can't
 	// be added.
-	prefsPath := filepath.Join(cmd.Site, "preferences.yaml")
+	prefsPath := filepath.Join(cmd.Site, "settings.yaml")
 	navLinkAdded := false
 	if cmd.NavLink != "" {
 		if navLinkAdded, err = gho_static.AddToList(prefsPath, "nav_links", cmd.NavLink); err != nil {
@@ -125,7 +175,8 @@ func (a app) run(args []string) error {
 			return err
 		}
 		images, _ := fs.Sub(img, "img")
-		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, readme, cmd.Clean)
+		themes, _ := fs.Sub(defaultTheme, "themes")
+		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, themes, readme, cmd.Clean)
 	case cli.GeneratePage, cli.GeneratePost:
 		var prefs gho_static.Preferences
 		if prefs, err = gho_static.ReadPreferences(prefsPath); err != nil {
@@ -151,6 +202,30 @@ func (a app) run(args []string) error {
 		return nil
 	case cli.PublishDrafts:
 		return a.publishDrafts(cmd.Site, cmd.Yes)
+	case cli.UseTheme:
+		if _, err := os.Stat(filepath.Join(cmd.Site, "themes", cmd.Theme)); os.IsNotExist(err) {
+			if _, err := generator.GetThemes(cmd.Site, []string{cmd.Theme}, term.Output); err != nil {
+				return err
+			}
+		}
+		if err := gho_static.SetValue(prefsPath, "theme", cmd.Theme); err != nil {
+			return err
+		}
+		if version, err = a.build(cmd.Site, cmd.Options); err != nil {
+			return err
+		}
+		fmt.Fprintf(term.Out, "%s now uses the %s theme. You can view it at:\n    %s\n", cmd.Site, cmd.Theme, output.Link+utils.FileLink(filepath.Join(cmd.Site, "build", "index.html"))+output.Reset)
+		a.printVersion(version)
+		return nil
+	case cli.GetAllThemes:
+		names, err := generator.GetThemes(cmd.Site, nil, term.Output)
+		if err != nil {
+			return err
+		}
+		term.Infof("Got themes: %s. Choose one with --use-theme, or by setting theme in %s.\n", strings.Join(names, ", "), prefsPath)
+		return nil
+	case cli.ListThemes:
+		return a.listThemes(cmd.Site, prefsPath)
 	case cli.Deploy:
 		if version, err = deployment.Deploy(cmd.Site, cmd.Deployer, cmd.Options); err != nil {
 			return err
@@ -195,7 +270,7 @@ func (a app) run(args []string) error {
 			kind = "clean static site"
 		}
 		fmt.Fprintf(term.Out, "Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, output.Link+utils.FileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+output.Reset)
-		fmt.Fprintf(term.Out, "Basic site preferences can be edited at any time in %s.\n", filepath.Join(cmd.GenPath, "preferences.yaml"))
+		fmt.Fprintf(term.Out, "Basic site settings can be edited at any time in %s, and its look in %s.\n", filepath.Join(cmd.GenPath, "settings.yaml"), filepath.Join(cmd.GenPath, "themes"))
 		return nil
 	}
 

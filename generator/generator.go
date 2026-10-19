@@ -139,7 +139,7 @@ func addDemoGallery(files, pics map[string]string, meta pageMeta, now time.Time)
 }
 
 // cleanIndexText is a clean site's home page body.
-const cleanIndexText = "You've built a static website in 'Clean' mode. There's nothing here - you're going to need to fill this out. Update your basic preferences in preferences.yaml, and add new pages using <code>gho-static --generate content/[new_page_name]</code> or new blogs using <code>gho-static --generate content/blogs/[my_new_blog_title]</code>. Please refer to mbtestfeed.github.io for additional documentation.\n"
+const cleanIndexText = "You've built a static website in 'Clean' mode. There's nothing here - you're going to need to fill this out. Update your basic settings in settings.yaml, and add new pages using <code>gho-static --generate content/[new_page_name]</code> or new blogs using <code>gho-static --generate content/blogs/[my_new_blog_title]</code>. Please refer to mbtestfeed.github.io for additional documentation.\n"
 
 // addListing adds a post listing page at path (slash separated, without
 // extension) to files, with a markdown intro titled after name.
@@ -156,11 +156,12 @@ func addGallery(files map[string]string) {
 }
 
 // Generate writes a starter site with the given preferences into dir, with
-// images copied into static/img, refusing to overwrite existing files. A
-// logo or favicon other than the default is copied from its path into
-// static/img too. Its home page is readme. A clean site has a single empty
-// post instead of the examples, and its pages have only front matter.
-func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme string, clean bool) error {
+// images copied into static/img and themes into themes, refusing to
+// overwrite existing files. A logo or favicon other than the default is
+// copied from its path into static/img too. Its home page is readme. A clean
+// site has a single empty post instead of the examples, and its pages have
+// only front matter.
+func Generate(dir string, prefs gho_static.Preferences, images, themes fs.FS, readme string, clean bool) error {
 	custom := map[string]string{}
 	for _, img := range []struct {
 		name       string
@@ -184,7 +185,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 		*img.path = "static/img/" + filepath.Base(*img.path)
 		custom[*img.path] = string(b)
 	}
-	files, err := siteFiles(prefs, images, readme, clean, time.Now())
+	files, err := siteFiles(prefs, images, themes, readme, clean, time.Now())
 	if err != nil {
 		return err
 	}
@@ -197,7 +198,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 
 // siteFiles returns the files of a starter site with the given preferences,
 // generated at now, by slash separated path. See Generate.
-func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean bool, now time.Time) (map[string]string, error) {
+func siteFiles(prefs gho_static.Preferences, images, themes fs.FS, readme string, clean bool, now time.Time) (map[string]string, error) {
 	files := map[string]string{}
 	starterFiles, _ := fs.Sub(starter, "starter")
 	if err := addFiles(files, starterFiles, ""); err != nil {
@@ -205,6 +206,9 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 	}
 	if err := addFiles(files, images, "static/img/"); err != nil {
 		return nil, fmt.Errorf("failed to read images: %w", err)
+	}
+	if err := addFiles(files, themes, "themes/"); err != nil {
+		return nil, fmt.Errorf("failed to read themes: %w", err)
 	}
 	// Demo pictures go in the example gallery posts, not static/img.
 	pics := map[string]string{}
@@ -218,7 +222,7 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode preferences: %w", err)
 	}
-	files["preferences.yaml"] = string(prefsYAML)
+	files["settings.yaml"] = string(prefsYAML)
 	if clean {
 		files["index.md"] = "---\ntitle:\n---\n\n" + cleanIndexText
 		for _, name := range []string{"about", "contact"} {

@@ -55,6 +55,7 @@ type loadedSite struct {
 	opts    Options
 	content *file_access.ContentDir
 	prefs   Preferences
+	theme   ThemePreferences
 	tmpl    *template.Template // the layout and structure templates
 	index   mdFile             // the home page
 }
@@ -84,7 +85,14 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 		return loadedSite{}, err
 	}
 
-	prefs, err := readPreferences(fsys, "preferences.yaml")
+	prefs, err := readOver(fsys, "settings.yaml", DefaultPreferences)
+	if err != nil {
+		return loadedSite{}, err
+	}
+	if prefs.Theme == "" || !file_access.FileExists(fsys, prefs.themeDir()) {
+		return loadedSite{}, fmt.Errorf("theme %q in settings.yaml has no folder in themes/", prefs.Theme)
+	}
+	theme, err := readOver(fsys, path.Join(prefs.themeDir(), "theme_preferences.yaml"), DefaultThemePreferences)
 	if err != nil {
 		return loadedSite{}, err
 	}
@@ -118,7 +126,7 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 	}
 	meta, body := parseFrontMatter(indexBytes)
 	meta.Unreleased = meta.IsUnreleased(now)
-	return loadedSite{source: s, opts: opts, content: content, prefs: prefs, tmpl: tmpl, index: mdFile{Meta: meta, Body: body}}, nil
+	return loadedSite{source: s, opts: opts, content: content, prefs: prefs, theme: theme, tmpl: tmpl, index: mdFile{Meta: meta, Body: body}}, nil
 }
 
 // layout returns the page data shared by every page of ls, marked with
@@ -240,39 +248,43 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 	return ls.writeContent(plan, buildDir)
 }
 
-// sharedBases are the paths, without extension, of the css and js files
-// linked from every page: those beside the layout's home page and each
-// structure template.
-var sharedBases = []string{
-	"index",
-	"structure/header/header",
-	"structure/footer/footer",
-	"structure/intro-sidebar/intro-sidebar",
-	"structure/recent-activity/recent-activity",
+// structureParts are the structure templates' folders, each named after its
+// template.
+var structureParts = []string{"header", "footer", "intro-sidebar", "recent-activity"}
+
+// sharedFiles returns the paths of the css and js files linked from every
+// page, in order: the theme's theme.css and the layout's index.js, then each
+// structure part's css (at the same path in the theme) and js (beside its
+// template).
+func (ls loadedSite) sharedFiles() []string {
+	files := []string{path.Join(ls.prefs.themeDir(), "theme.css"), "index.js"}
+	for _, p := range structureParts {
+		base := path.Join("structure", p, p)
+		files = append(files, path.Join(ls.prefs.themeDir(), base+".css"), base+".js")
+	}
+	return files
 }
 
 // planShared returns ls's non-empty shared css and js files (see
-// sharedBases), to copy into the build's static folder, with preference
-// values filled into the css.
+// sharedFiles), to copy into the build's static folder, with theme
+// preference values filled into the css.
 func (ls loadedSite) planShared() ([]staticFile, error) {
 	var files []staticFile
-	for _, base := range sharedBases {
-		for _, ext := range assetExts {
-			name := path.Base(base) + ext
-			data, err := fs.ReadFile(ls, base+ext)
-			if os.IsNotExist(err) || (err == nil && len(data) == 0) {
-				continue
-			}
-			if err != nil {
-				return nil, fmt.Errorf("failed to read %s: %w", name, err)
-			}
-			if ext == ".css" {
-				if data, err = fillCSS(data, name, ls.prefs); err != nil {
-					return nil, err
-				}
-			}
-			files = append(files, staticFile{name: name, data: data})
+	for _, f := range ls.sharedFiles() {
+		name := path.Base(f)
+		data, err := fs.ReadFile(ls, f)
+		if os.IsNotExist(err) || (err == nil && len(data) == 0) {
+			continue
 		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %s: %w", f, err)
+		}
+		if utils.HasExt(f, ".css") {
+			if data, err = fillCSS(data, name, ls.theme); err != nil {
+				return nil, err
+			}
+		}
+		files = append(files, staticFile{name: name, data: data})
 	}
 	return files, nil
 }

@@ -1,0 +1,388 @@
+/* Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* The templated values below are filled in from theme_preferences.yaml at
+   build time. Change them there rather than here. The rest are mixed from
+   them, so they follow light and dark mode too. */
+:root {
+    --banner-color: {{.BannerColor.Light}};
+    --banner-text-color: {{.BannerTextColor.Light}};
+    --background-color: {{.BackgroundColor.Light}};
+    --text-color: {{.TextColor.Light}};
+    --link-color: {{.Link.Light}};
+    --link-clicked-color: {{.LinkClicked.Light}};
+    --tag-color: {{.TagColor.Light}};
+    --tag-text-color: {{.TagTextColor.Light}};
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --banner-color: {{.BannerColor.Dark}};
+        --banner-text-color: {{.BannerTextColor.Dark}};
+        --background-color: {{.BackgroundColor.Dark}};
+        --text-color: {{.TextColor.Dark}};
+        --link-color: {{.Link.Dark}};
+        --link-clicked-color: {{.LinkClicked.Dark}};
+        --tag-color: {{.TagColor.Dark}};
+        --tag-text-color: {{.TagTextColor.Dark}};
+    }
+}
+
+:root {
+    --accent-gradient: linear-gradient(135deg, var(--link-color), var(--link-clicked-color));
+    --surface-color: color-mix(in srgb, var(--background-color) 94%, var(--text-color));
+    --card-color: color-mix(in srgb, var(--banner-color) 70%, var(--background-color));
+    --border-color: color-mix(in srgb, var(--text-color) 12%, transparent);
+    --muted-text-color: color-mix(in srgb, var(--text-color) 65%, transparent);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.06);
+    --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.05), 0 16px 40px rgb(0 0 0 / 0.1);
+    --radius: 16px;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    font-family: {{.Font}};
+    font-size: 1.0625rem;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--link-color);
+    text-decoration: none;
+    text-underline-offset: 0.2em;
+}
+
+a:visited {
+    color: var(--link-clicked-color);
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+img, picture, video, canvas, svg {
+    display: block;
+    max-width: 100%;
+}
+
+input, button, textarea, select {
+    font: inherit;
+}
+
+/* anywhere, unlike break-word, also lets flex items (e.g. the pager) shrink
+   past long words and URLs, so nothing pushes the page wider than the
+   screen. */
+body {
+    overflow-wrap: anywhere;
+}
+
+/* Wide code blocks and tables scroll within the content instead. */
+#content pre,
+#content table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+#content {
+    width: 60%;
+    max-width: 1500px;
+    margin: calc(70px + 48px) auto 64px;
+}
+
+/* Headings: tight and bold, with the page title in the accent gradient. */
+#content h1,
+#content h2,
+#content h3 {
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 1.6em 0 0.5em;
+}
+
+#content h1 {
+    font-size: clamp(2.25rem, 6vw, 3.5rem);
+    margin-top: 0;
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+#content h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+}
+
+#content h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+#content p + p {
+    margin-top: 1em;
+}
+
+/* Keeps markdown lists' bullets and numbers inside the content. Template
+   lists have a class, and are styled on their own. */
+#content :is(ul, ol):not([class]) {
+    padding-left: 1.4em;
+    margin: 1em 0;
+}
+
+#content :is(ul, ol):not([class]) li + li {
+    margin-top: 0.35em;
+}
+
+#content blockquote {
+    margin: 1.5em 0;
+    padding: 0.75em 1.25em;
+    border-left: 4px solid var(--link-color);
+    border-radius: 0 12px 12px 0;
+    background-color: var(--surface-color);
+    color: var(--muted-text-color);
+}
+
+#content code {
+    padding: 0.15em 0.4em;
+    font-size: 0.875em;
+    border-radius: 6px;
+    background-color: var(--surface-color);
+}
+
+#content pre {
+    margin: 1.5em 0;
+    padding: 1em 1.25em;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background-color: var(--surface-color);
+}
+
+#content pre code {
+    padding: 0;
+    background: none;
+}
+
+#content table {
+    margin: 1.5em 0;
+    border-collapse: collapse;
+}
+
+#content th,
+#content td {
+    padding: 0.5em 1em;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+}
+
+#content img {
+    border-radius: 12px;
+}
+
+#content hr {
+    margin: 2.5em 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+}
+
+/* A gallery page's images, centred, at full size up to the content's
+   width. */
+.page-images img {
+    margin: 1.5em auto;
+    box-shadow: var(--shadow);
+}
+
+.byline {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--muted-text-color);
+}
+
+.byline-date {
+    margin-left: auto;
+}
+
+.warnings {
+    margin-bottom: 24px;
+    padding: 12px 18px;
+    border: 1px solid #fca5a5;
+    border-radius: 12px;
+    background-color: #fef2f2;
+    color: #7f1d1d;
+}
+
+.warning-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #b91c1c;
+}
+
+/* Tag pills: 0.7em text centred in a 1em (of the surrounding text) high
+   pill, never split over lines. */
+.tag,
+a.tag:visited {
+    display: inline-block;
+    height: calc(1em / 0.7);
+    line-height: calc(1em / 0.7);
+    padding: 0 0.7em;
+    margin-right: 0.4em;
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-radius: 999px;
+    background-color: var(--tag-color);
+    color: var(--tag-text-color);
+    text-decoration: none;
+}
+
+/* Previous and next links as outlined buttons. */
+.pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 32px 0;
+}
+
+.pager a,
+.pager a:visited {
+    padding: 0.5em 1.1em;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-color);
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.pager a:hover {
+    text-decoration: none;
+    border-color: var(--link-color);
+    background-color: var(--surface-color);
+}
+
+.pager-next {
+    margin-left: auto;
+}
+
+/* Listing and tag page entries as raised cards. */
+.blog-links > li,
+.tag-links:not(.tag-index) > li {
+    padding: 20px 24px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background-color: var(--card-color);
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.blog-links > li:hover,
+.tag-links:not(.tag-index) > li:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-raised);
+}
+
+.blog-links > li > a,
+.tag-links:not(.tag-index) > li > a {
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.blog-date,
+.tag-date,
+.gallery-date {
+    font-size: 0.875rem;
+    color: var(--muted-text-color);
+    opacity: 1;
+}
+
+/* Gallery tiles as cards, with the image filling the top. */
+.gallery-item {
+    padding-bottom: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background-color: var(--card-color);
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.gallery-item:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-raised);
+}
+
+.gallery-item > a,
+.gallery-item > a:visited {
+    color: var(--text-color);
+    text-decoration: none;
+}
+
+#content .gallery-image {
+    border-radius: 0;
+}
+
+.gallery-title {
+    padding: 14px 16px 0;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.gallery-item > div:not(.warnings) {
+    padding: 0 16px;
+    margin-top: 4px;
+}
+
+.gallery-item > .warnings {
+    margin: 8px 16px 0;
+}
+
+/* Wider screens put the sidebars either side of the content. The content
+   keeps its width, only narrowing to leave each sidebar its 150px (plus
+   20px either side), and stays centred between equal side columns. */
+@media (width > 1080px) {
+    #main {
+        display: grid;
+        grid-template-columns: 1fr min(1500px, 60%, 100% - 2 * (150px + 40px)) 1fr;
+        align-items: start;
+    }
+
+    #main > #content {
+        grid-column: 2;
+        grid-row: 1;
+        width: auto;
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+@media (width <= 1080px) {
+    #content {
+        width: auto;
+        margin: calc(70px + 32px) 20px 48px;
+    }
+
+    .byline {
+        flex-direction: column;
+    }
+
+    .byline-date {
+        margin-left: 0;
+    }
+}

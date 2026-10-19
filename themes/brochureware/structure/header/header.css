@@ -1,0 +1,204 @@
+#header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    width: 100%;
+    height: 70px;
+    color: var(--banner-text-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+}
+
+/* The header background is a layer of its own, so the menu can slide in
+   underneath it. */
+#header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--banner-color);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 1px 12px rgb(0 0 0 / 0.04);
+}
+
+#header a,
+#header a:visited {
+    color: var(--banner-text-color);
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: clamp(1rem, 5vw, 1.35rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+}
+
+#header .header-title:hover {
+    text-decoration: none;
+}
+
+/* At most two lines, so the title always fits inside the header. */
+.header-title-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.2;
+}
+
+.header-logo {
+    max-height: 40px;
+    width: auto;
+}
+
+/* Full header height, out to the right edge, so the whole section is
+   clickable. */
+.header-nav {
+    align-self: stretch;
+    margin-right: -24px;
+    border-left: 1px solid var(--border-color);
+}
+
+/* Padding centres the 24x18 icon in the clickable area. */
+.header-nav summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 64px;
+    height: 100%;
+    padding: 26px 20px;
+}
+
+.header-nav summary span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    border-radius: 2px;
+    background-color: currentColor;
+    transition: transform 0.3s, width 0.3s;
+}
+
+.header-nav[open] summary span:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.header-nav[open] summary span:nth-child(2) {
+    width: 0;
+}
+
+.header-nav[open] summary span:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}
+
+/* Dimmed layers inside summary, so clicking anywhere outside the menu
+   toggles it closed. ::before covers the page beneath the header and menu,
+   ::after covers the header up to the menu button (64px plus its 1px
+   border). They fade with the menu, hidden (and so unclickable) once faded
+   out. */
+.header-nav summary::before,
+.header-nav summary::after {
+    content: "";
+    position: fixed;
+    visibility: hidden;
+    background-color: transparent;
+    cursor: default;
+    transition: background-color 0.3s, visibility 0.3s;
+}
+
+.header-nav[open] summary::before,
+.header-nav[open] summary::after {
+    visibility: visible;
+    background-color: rgb(15 23 42 / 0.25);
+}
+
+.header-nav summary::before {
+    inset: 0;
+    z-index: -3;
+}
+
+.header-nav summary::after {
+    top: 0;
+    left: 0;
+    right: 65px;
+    height: 70px;
+    z-index: 0;
+}
+
+/* Stays at the menu's final position, drawing the line along its top while
+   the menu slides in and out. overflow clips to inside the border, so the
+   sliding menu never covers the line. */
+.header-menu {
+    position: absolute;
+    z-index: -2;
+    top: 100%;
+    right: 0;
+    min-width: 360px;
+    max-width: calc(100vw - 100px);
+    border-top: 1px solid var(--border-color);
+    border-bottom-left-radius: var(--radius);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+}
+
+.header-nav ul {
+    list-style: none;
+    padding: 8px 0;
+    background-color: var(--banner-color);
+    /* Hidden just above the bottom of the header until opened. */
+    transform: translateY(-100%);
+    transition: transform 0.3s;
+}
+
+.header-nav[open] ul {
+    transform: none;
+}
+
+@starting-style {
+    .header-nav[open] ul {
+        transform: translateY(-100%);
+    }
+}
+
+/* Keep the menu shown while it slides out after closing. */
+.header-nav::details-content {
+    transition: content-visibility 0.3s allow-discrete;
+}
+
+@media (width <= 1080px) {
+    .header-menu {
+        min-width: 0;
+        width: calc(100vw - 100px);
+    }
+}
+
+.header-nav a {
+    display: block;
+    width: 100%;
+    padding: 12px 24px;
+    text-align: right;
+    font-weight: 600;
+    color: inherit;
+    text-decoration: none;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.nav-flag {
+    color: #dc2626;
+    font-weight: 800;
+}
+
+#header .header-nav a:hover,
+#header .header-nav a:focus {
+    text-decoration: none;
+    color: var(--link-color);
+    background-color: color-mix(in srgb, var(--link-color) 8%, transparent);
+}

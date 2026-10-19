@@ -63,7 +63,7 @@ Use `go run main.go` in place of `gho-static` in any of the commands below. Path
 gho-static --generate mysite
 ```
 
-This asks how you'd like to deploy the site, then creates a `mysite` folder with a starter site in it, and builds it into `mysite/build`. Basic site preferences can be edited at any time in `mysite/preferences.yaml`. Add `--yes` to skip the question, or `--clean` to start from a blank site without the example content.
+This asks how you'd like to deploy the site, then creates a `mysite` folder with a starter site in it, and builds it into `mysite/build`. Basic site settings can be edited at any time in `mysite/settings.yaml`. Add `--yes` to skip the question, or `--clean` to start from a blank site without the example content.
 
 ### Add a new page
 
@@ -93,7 +93,8 @@ gho-static --generate content/my_new_collection/my_first_post_in_new_collection 
 
 This creates `content/my_new_collection` with its own listing page, offers to add it to the menu, and adds the post inside it.
 
-If you don't want a blogs section, delete the `content/blogs` folder, and remove `blogs` from `nav_links` in `preferences.yaml` to stop it being warned about.
+If you don't want a blogs section, delete the `content/blogs` folder, and remove `blogs` from `nav_links` in `settings.yaml` to stop it being warned about.
+
 ### Build and deploy
 
 ```
@@ -114,9 +115,12 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 - `--preview-publish`: build without drafts and unreleased pages, as publishing does, but with links that still work locally. Otherwise they're built, with a warning on each.
 - `-p, --publish`: build for publishing. Each page is written as `folder/index.html`, and drafts and unreleased pages are left out. Can't be used with `--preview-publish`.
 - `--drafts`: go through each draft page, asking whether to publish it. With `--yes`, publishes them all.
-- `--deploy`: build for publishing and deploy, using the deployment method and settings saved in `preferences.yaml`, or asking for any that aren't.
-- `--deployment-method <github-pages|none>`: set up the site's build folder for deploying, and save the method in `preferences.yaml`.
-- `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `preferences.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
+- `--deploy`: build for publishing and deploy, using the deployment method and settings saved in `settings.yaml`, or asking for any that aren't.
+- `--deployment-method <github-pages|none>`: set up the site's build folder for deploying, and save the method in `settings.yaml`.
+- `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `settings.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
+- `--use-theme <name>`: switch the site to the theme `<name>` and rebuild it, downloading the theme first if it isn't in `themes/`. See Themes, below.
+- `--get-all-themes`: download every theme into `themes/`, replacing any already there.
+- `--list-themes`: list the themes that can be downloaded and those in `themes/`, marking which are downloaded and which one the site uses.
 
 Single-letter flags can be combined, e.g. `-cy`. Run `gho-static` with no arguments for the full usage text.
 
@@ -126,19 +130,38 @@ Single-letter flags can be combined, e.g. `-cy`. Run `gho-static` with no argume
 
 ```
 mysite/
-  preferences.yaml      site name, menu links, colours, fonts, sidebars
+  settings.yaml         site name, menu links, theme, sidebars, deployment
   index.md              the home page
-  index.css             styles for every page
   index.html            the page layout every page is built into
   content/              your pages and posts
-  structure/            the header, footer and sidebars
+  structure/            the header, footer and sidebars' HTML
+  themes/               the site's look: each theme's CSS, colours and font
   static/               files copied as they are into the build
   build/                the built site (don't edit this, it's replaced on each build)
 ```
 
-### Preferences
+### Settings
 
-`preferences.yaml` holds the site's settings: its name, the menu links (`nav_links`, as content folder names in menu order), colours for light and dark mode, the font, logo and favicon, the default author for new pages, and the intro sidebar's image, text and social links. Rebuild the site after changing it. Its `deployment` section holds how the site is deployed: a `method` (`github-pages` or `none`) and that method's settings, such as GitHub Pages' `username`, whose `<username>.github.io` repo the site is pushed to. It's saved when the site is generated or its deployment is set up, and used by `--deploy`.
+`settings.yaml` holds the site's settings: its name, the menu links (`nav_links`, as content folder names in menu order), its `theme` (see below), the logo and favicon, the default author for new pages, and the intro sidebar's image, text and social links. Rebuild the site after changing it. Its `deployment` section holds how the site is deployed: a `method` (`github-pages` or `none`) and that method's settings, such as GitHub Pages' `username`, whose `<username>.github.io` repo the site is pushed to. It's saved when the site is generated or its deployment is set up, and used by `--deploy`.
+
+### Themes
+
+A theme is a folder in `themes/`, and `theme` in `settings.yaml` names the one the site uses. Only the chosen theme's CSS is built into the site. New sites come with `default_developer_ugly`, which is plain and functional. Others can be downloaded from the [themes folder](https://github.com/mbtestfeed/gho-static/tree/main/themes) of this repo, such as `brochureware`, a slightly more modern look (at the time of writing), like you might see on a company's site:
+
+```
+gho-static --use-theme brochureware mysite
+gho-static --get-all-themes mysite
+```
+
+The first switches the site to `brochureware`, downloading it if it isn't in `themes/` yet. The second downloads every theme, replacing any already there, so any changes to their files are lost: keep site-specific CSS in your project files instead (see below). Themes are downloaded with git, over SSH if you're authenticated with GitHub, otherwise anonymously over HTTPS. Theme field names should stay reasonably stable, but they may change between versions in ways that break a theme's compatibility.
+
+Each theme holds:
+
+- `theme.css`, styling the whole site.
+- `structure/<part>/<part>.css`, styling the header, footer and each sidebar.
+- `theme_preferences.yaml`, with the theme's colours for light and dark mode and its font. The `{{...}}` values in its CSS are filled in from these, so change them here rather than in the CSS.
+
+To make your own theme, copy a theme's folder, rename it, edit its files, and set `theme` to its name.
 
 ### Markdown pages
 
@@ -185,9 +208,10 @@ Two folder names in `content/` are reserved, and work differently from other col
 
 ### CSS and JavaScript
 
-- `index.css` styles the whole site. The `{{...}}` values in it are filled in from `preferences.yaml`, so change colours and fonts there. Your own CSS can use them as variables, e.g. `color: var(--banner-color)`.
+- The theme's CSS styles the whole site (see Themes, above). Your own CSS can use its colours as variables, e.g. `color: var(--banner-color)`.
 - Each page's folder has a `.css` and `.js` file named after it, e.g. `content/about/about.css`. These only apply to the pages in that folder, so you can style one page without affecting the rest.
-- The header, footer and sidebars each have their own HTML and CSS in `structure/`. Turn the sidebars on or off with `show_intro_sidebar` and `show_recent_activity_sidebar` in `preferences.yaml`.
+- The header, footer and sidebars each have their own HTML in `structure/`, and their CSS in the theme. Turn the sidebars on or off with `show_intro_sidebar` and `show_recent_activity_sidebar` in `settings.yaml`.
+- `index.js` is linked from every page, as is a `.js` file beside each structure template, e.g. `structure/header/header.js`, if you add one.
 - Files in `static/` are copied into `build/static` as they are, for fonts, downloads or images used on several pages.
 
 Empty CSS and JavaScript files are left out of the build, so there's no need to delete them.

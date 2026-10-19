@@ -47,27 +47,37 @@ Flags:
                           With --yes, publishes them all.
   --deploy                Build <site folder> for publishing (-p) and deploy
                           it, using the deployment method and settings saved
-                          in its preferences.yaml, or asking for any that
+                          in its settings.yaml, or asking for any that
                           aren't. For GitHub Pages, commits the build folder
                           and pushes it.
   --deployment-method <github-pages|none>
                           Set up <site folder>/build for publishing, building
                           it first if it doesn't exist, and save the method in
-                          preferences.yaml. github-pages makes it a git repo,
+                          settings.yaml. github-pages makes it a git repo,
                           with the <username>.github.io repo of the username
-                          saved in preferences.yaml as its remote. Asks for
+                          saved in settings.yaml as its remote. Asks for
                           the method (and username) if not given. With -g,
                           used instead of asking.
   --deploy-setting <name=value>
                           A setting for the deployment method, e.g.
                           username=<name> for github-pages, used instead of
-                          the one saved in preferences.yaml (and saved in its
+                          the one saved in settings.yaml (and saved in its
                           place).
                           Can be given more than once. Secret settings, such
                           as API keys, are never saved: give them with this,
                           in a GHO_STATIC_<METHOD>_<SETTING> environment
                           variable (e.g. GHO_STATIC_NETLIFY_TOKEN), or when
                           asked.
+  --use-theme <name>      Switch <site folder> to the theme <name>, setting
+                          theme in settings.yaml, and rebuild it. Downloads
+                          the theme from the Gho-Static GitHub repo into
+                          <site folder>/themes first if it isn't there.
+  --get-all-themes        Download every theme in the Gho-Static GitHub repo
+                          into <site folder>/themes, replacing any already
+                          there.
+  --list-themes           List the themes in the Gho-Static GitHub repo and in
+                          <site folder>/themes, marking which are downloaded
+                          and which one the site uses.
 
 Single-letter flags can be combined, e.g. -cy.
 `
@@ -83,6 +93,9 @@ const (
 	SetupDeployment          // set up Site's build folder for Method, building it if missing
 	Deploy                   // build Site for publishing and deploy it with Method
 	PublishDrafts            // ask whether to publish each of Site's draft pages
+	UseTheme                 // switch Site to Theme, downloading it if missing, then build Site
+	GetAllThemes             // download every theme into Site's themes folder
+	ListThemes               // list the themes that can be downloaded, and Site's own
 )
 
 // Command is the work requested on the command line.
@@ -91,13 +104,14 @@ type Command struct {
 	Site     string // site folder to build; unset for GenerateSite
 	GenPath  string // folder to generate
 	PostName string // only set for GeneratePost
+	Theme    string // only set for UseTheme
 	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
 	Yes      bool   // answer yes to every question (--yes)
 	Clean    bool   // generate without example content (--clean)
 	Options  gho_static.Options
 	Prefs    gho_static.Preferences // only set for GenerateSite
 	Deployer deployment.Deployer    // only set for GenerateSite, SetupDeployment and Deploy
-	// Deployer's method and settings, to save in preferences.yaml
+	// Deployer's method and settings, to save in settings.yaml
 	Deployment gho_static.Deployment
 
 	method      string              // --deployment-method value, if it's a method
@@ -114,12 +128,23 @@ func Parse(args []string) (Command, error) {
 	flags, positional := utils.ParseArgs(args)
 
 	var cmd Command
-	generate, deploying, drafts := false, false, false
+	generate, deploying, drafts, useTheme, allThemes, listThemes := false, false, false, false, false, false
 	for _, f := range flags {
 		switch f.Key {
 		case "g", "generate":
 			generate, cmd.GenPath = true, f.Val
 			continue
+		case "use-theme":
+			useTheme, cmd.Theme = true, f.Val
+			// A theme is a single folder in themes/.
+			if cmd.Theme == "" || cmd.Theme == "." || cmd.Theme == ".." || strings.ContainsAny(cmd.Theme, `/\`) {
+				return cmd, fmt.Errorf("--use-theme needs a theme name, e.g. --use-theme brochureware mysite")
+			}
+			continue
+		case "get-all-themes":
+			allThemes = true
+		case "list-themes":
+			listThemes = true
 		case "deployment-method":
 			cmd.methodGiven, cmd.method = true, f.Val
 			if _, ok := deployment.Find(f.Val); !ok && f.Val != "" {
@@ -172,9 +197,18 @@ func Parse(args []string) (Command, error) {
 		return cmd, fmt.Errorf("missing path argument")
 	}
 
+	if generate && (useTheme || allThemes || listThemes) {
+		return cmd, fmt.Errorf("--use-theme, --get-all-themes and --list-themes can't be used with --generate. Generate the site first, then rerun with just the theme flag.")
+	}
 	if !generate {
 		cmd.Site = positional[0]
 		switch {
+		case useTheme:
+			cmd.Mode = UseTheme
+		case allThemes:
+			cmd.Mode = GetAllThemes
+		case listThemes:
+			cmd.Mode = ListThemes
 		case drafts:
 			cmd.Mode = PublishDrafts
 		case deploying:
@@ -256,7 +290,7 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 		if m.Name == cmd.method {
 			saved = cmd.saved
 		}
-		if err := m.Validate(saved, filepath.Join(cmd.Site, "preferences.yaml")); err != nil {
+		if err := m.Validate(saved, filepath.Join(cmd.Site, "settings.yaml")); err != nil {
 			return err
 		}
 		if err := m.Validate(cmd.given, "--deploy-setting"); err != nil {
@@ -269,10 +303,10 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 
 	switch cmd.Mode {
 	case Deploy, SetupDeployment:
-		// The method saved in preferences.yaml is used unless one is given,
+		// The method saved in settings.yaml is used unless one is given,
 		// along with its saved settings. Sites set up before they were saved
 		// there are detected from their build folder instead.
-		prefs, err := gho_static.ReadPreferences(filepath.Join(cmd.Site, "preferences.yaml"))
+		prefs, err := gho_static.ReadPreferences(filepath.Join(cmd.Site, "settings.yaml"))
 		if err != nil {
 			return cmd, err
 		}
@@ -303,7 +337,7 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 				return cmd, err
 			}
 			if _, ok := deployment.Find(cmd.method); !ok || cmd.Deployer.CheckPush() != nil {
-				return cmd, fmt.Errorf("%s has no deployment method or settings set up, and --yes stops them being asked for. Rerun without --yes, or set them in the deployment section of its preferences.yaml or with --deploy-setting.", cmd.Site)
+				return cmd, fmt.Errorf("%s has no deployment method or settings set up, and --yes stops them being asked for. Rerun without --yes, or set them in the deployment section of its settings.yaml or with --deploy-setting.", cmd.Site)
 			}
 			break
 		}
@@ -346,6 +380,10 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 			if cmd.Yes || (t.Interactive && t.askNavLink(cmd.collection)) {
 				cmd.NavLink = cmd.collection
 			}
+		}
+	case UseTheme, GetAllThemes, ListThemes:
+		if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
+			return cmd, fmt.Errorf("site folder %s does not exist", cmd.Site)
 		}
 	}
 	return cmd, nil

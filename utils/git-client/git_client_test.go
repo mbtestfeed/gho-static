@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -224,6 +225,60 @@ func TestPushAndRemoteBranch(t *testing.T) {
 	}
 	if got := RemoteBranch(empty); got != "" {
 		t.Errorf("RemoteBranch of an empty remote = %q, want \"\"", got)
+	}
+}
+
+func TestReachable(t *testing.T) {
+	requireGit(t)
+	if !Reachable(newRemote(t)) {
+		t.Error("Reachable of a local repo = false")
+	}
+	if Reachable(filepath.Join(t.TempDir(), "missing")) {
+		t.Error("Reachable of a missing repo = true")
+	}
+}
+
+func TestSparseCloneAndRemoteDirs(t *testing.T) {
+	requireGit(t)
+	repo, remote := newRepo(t), newRemote(t)
+	if err := SetRemote(repo, remote); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"README.md", "themes/a/theme.css", "themes/b/theme.css", "other/file.txt"} {
+		if err := os.MkdirAll(filepath.Join(repo, filepath.Dir(name)), 0755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, repo, name, name)
+	}
+	if err := CommitAll(repo, "files"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Push(repo); err != nil {
+		t.Fatal(err)
+	}
+
+	dirs, err := RemoteDirs(remote, "themes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"a", "b"}; !slices.Equal(dirs, want) {
+		t.Errorf("RemoteDirs(themes) = %q, want %q", dirs, want)
+	}
+
+	dir := filepath.Join(t.TempDir(), "clone")
+	if err := SparseClone(remote, dir, "themes/a"); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{
+		"README.md":          true,
+		"themes/a/theme.css": true,
+		"themes/b/theme.css": false,
+		"other/file.txt":     false,
+	} {
+		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(name)))
+		if got := err == nil; got != want {
+			t.Errorf("%s cloned = %v, want %v", name, got, want)
+		}
 	}
 }
 

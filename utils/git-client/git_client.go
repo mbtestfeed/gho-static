@@ -46,6 +46,52 @@ func RemoteExists(url string) error {
 	return Run(".", "ls-remote", url)
 }
 
+// Reachable reports whether the repo at url can be reached without asking
+// for credentials, e.g. over SSH with a key already set up.
+func Reachable(url string) bool {
+	cmd := exec.Command("git", "ls-remote", url)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if os.Getenv("GIT_SSH_COMMAND") == "" {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
+	return cmd.Run() == nil
+}
+
+// SparseClone clones only the folders paths of the repo at url, at its
+// latest commit, into dir. Files directly in the repo's root folder are
+// cloned too.
+func SparseClone(url, dir string, paths ...string) error {
+	if err := Run(".", "clone", "--depth", "1", "--filter=blob:none", "--sparse", url, dir); err != nil {
+		return err
+	}
+	return Run(dir, append([]string{"sparse-checkout", "set"}, paths...)...)
+}
+
+// RemoteDirs returns the names of the folders directly inside the folder
+// path (slash separated) of the repo at url, at its latest commit, without
+// downloading any files.
+func RemoteDirs(url, path string) ([]string, error) {
+	tmp, err := os.MkdirTemp("", "gho-static-git-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a temporary folder: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+	if err := Run(".", "clone", "--depth", "1", "--filter=blob:none", "--no-checkout", url, tmp); err != nil {
+		return nil, err
+	}
+	out, err := exec.Command("git", "-C", tmp, "ls-tree", "-d", "--name-only", "HEAD", strings.TrimSuffix(path, "/")+"/").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-tree failed: %w", err)
+	}
+	var dirs []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			dirs = append(dirs, line[strings.LastIndex(line, "/")+1:])
+		}
+	}
+	return dirs, nil
+}
+
 // Clone clones the repo at url into dir, starting on DefaultBranch if the
 // repo is empty.
 func Clone(url, dir string) error {

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,19 +22,11 @@ type Color struct {
 	Dark  string `yaml:"dark"`
 }
 
-// Preferences are the site wide settings read from preferences.yaml.
+// Preferences are the site wide settings read from settings.yaml.
 type Preferences struct {
 	SiteName        string `yaml:"site_name"`
 	NavLinks        []string `yaml:"nav_links"` // content folder names, in menu order
-	BannerColor     Color  `yaml:"banner_color"`      // header, footer and menu background
-	BannerTextColor Color  `yaml:"banner_text_color"` // text and links in the header, footer and menu
-	BackgroundColor Color  `yaml:"background_color"`
-	TextColor       Color  `yaml:"text_color"`
-	Link            Color  `yaml:"link"`
-	LinkClicked     Color  `yaml:"link_clicked"`
-	TagColor        Color  `yaml:"tag_color"`      // tag pill background
-	TagTextColor    Color  `yaml:"tag_text_color"` // tag pill text
-	Font            string `yaml:"font"`
+	Theme           string `yaml:"theme"`   // folder in themes/ holding the site's css and theme preferences
 	Logo            string `yaml:"logo"`    // header image, relative to the site folder
 	Favicon         string `yaml:"favicon"` // browser tab icon, relative to the site folder
 	DefaultAuthor   string `yaml:"default_author"` // added to new markdown pages' front matter, if set
@@ -44,6 +37,20 @@ type Preferences struct {
 	IntroDescription string      `yaml:"intro_description"` // intro sidebar text
 	SocialLinks      SocialLinks `yaml:"social_links"`      // intro sidebar links, as name: url pairs; blank ones aren't shown
 	Deployment       Deployment  `yaml:"deployment,omitempty"` // how the build folder is published, saved once it's set up
+}
+
+// ThemePreferences are a theme's colours and font, read from its
+// theme_preferences.yaml and filled into its css.
+type ThemePreferences struct {
+	BannerColor     Color  `yaml:"banner_color"`      // header, footer and menu background
+	BannerTextColor Color  `yaml:"banner_text_color"` // text and links in the header, footer and menu
+	BackgroundColor Color  `yaml:"background_color"`
+	TextColor       Color  `yaml:"text_color"`
+	Link            Color  `yaml:"link"`
+	LinkClicked     Color  `yaml:"link_clicked"`
+	TagColor        Color  `yaml:"tag_color"`      // tag pill background
+	TagTextColor    Color  `yaml:"tag_text_color"` // tag pill text
+	Font            string `yaml:"font"`
 }
 
 // Deployment is how a site's build folder is published: a deployment
@@ -67,7 +74,7 @@ func (l SocialLink) Href() string {
 	return "https://" + l.URL
 }
 
-// SocialLinks are written in preferences.yaml as a mapping of name: url
+// SocialLinks are written in settings.yaml as a mapping of name: url
 // pairs, kept in the order given, so any name can be added.
 type SocialLinks []SocialLink
 
@@ -105,19 +112,25 @@ func (l SocialLinks) populated() []SocialLink {
 	return links
 }
 
-// DefaultPreferences are used for any setting missing from preferences.yaml.
-var DefaultPreferences = Preferences{
-	SiteName:        "Gho-Static",
-	NavLinks:        []string{"about", "blogs", "gallery", "contact"},
+// DefaultThemePreferences are used for any theme preference missing from a
+// theme's theme_preferences.yaml.
+var DefaultThemePreferences = ThemePreferences{
 	BannerColor:     Color{Light: "#add8e6", Dark: "#add8e6"},
 	BannerTextColor: Color{Light: "#000000", Dark: "#000000"},
 	BackgroundColor: Color{Light: "#ffffff", Dark: "#000000"},
 	TextColor:       Color{Light: "#000000", Dark: "#ffffff"},
-	Link:           Color{Light: "#0000ee", Dark: "#8ab4f8"},
+	Link:            Color{Light: "#0000ee", Dark: "#8ab4f8"},
 	LinkClicked:     Color{Light: "#551a8b", Dark: "#c58af9"},
 	TagColor:        Color{Light: "#add8e6", Dark: "#add8e6"},
 	TagTextColor:    Color{Light: "#000000", Dark: "#000000"},
-	Font:           "sans-serif",
+	Font:            "sans-serif",
+}
+
+// DefaultPreferences are used for any setting missing from settings.yaml.
+var DefaultPreferences = Preferences{
+	SiteName:        "Gho-Static",
+	NavLinks:        []string{"about", "blogs", "gallery", "contact"},
+	Theme:           "default_developer_ugly",
 	Logo:            "static/img/gho_stephanie_64x64.svg",
 	Favicon:         "static/img/favicon.ico",
 	ShowIntroSidebar:       true,
@@ -138,13 +151,13 @@ var DefaultPreferences = Preferences{
 // ReadPreferences reads the preferences file at path over the defaults. A
 // missing file gives the defaults.
 func ReadPreferences(path string) (Preferences, error) {
-	return readPreferences(os.DirFS(filepath.Dir(path)), filepath.Base(path))
+	return readOver(os.DirFS(filepath.Dir(path)), filepath.Base(path), DefaultPreferences)
 }
 
-// readPreferences reads the preferences file at path in fsys over the
-// defaults. A missing file gives the defaults.
-func readPreferences(fsys fs.FS, path string) (Preferences, error) {
-	prefs := DefaultPreferences
+// readOver reads the yaml file at path in fsys over defaults. A missing file
+// gives the defaults.
+func readOver[T any](fsys fs.FS, path string, defaults T) (T, error) {
+	prefs := defaults
 	b, err := fs.ReadFile(fsys, path)
 	if os.IsNotExist(err) {
 		return prefs, nil
@@ -185,6 +198,24 @@ func RemoveFromList(path, key, value string) error {
 		n := len(list.Content)
 		list.Content = slices.DeleteFunc(list.Content, func(item *yaml.Node) bool { return item.Value == value })
 		return len(list.Content) != n
+	})
+}
+
+// SetValue sets the setting key to value in the settings file at path,
+// keeping the rest of the file, including any comment on the setting, as
+// it is.
+func SetValue(path, key, value string) error {
+	return yaml_edit.EditFile(path, func(root *yaml.Node) (bool, error) {
+		n := yaml_edit.MappingValue(root, key)
+		if n == nil {
+			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, &yaml.Node{Kind: yaml.ScalarNode, Value: value})
+			return true, nil
+		}
+		if n.Kind == yaml.ScalarNode && n.Value == value {
+			return false, nil
+		}
+		n.Kind, n.Tag, n.Style, n.Value, n.Content = yaml.ScalarNode, "", 0, value, nil
+		return true, nil
 	})
 }
 
@@ -237,8 +268,8 @@ func editList(path, key string, edit func(list *yaml.Node) bool) error {
 }
 
 // fillCSS executes css (named name, for errors) as a text template with
-// prefs, filling in any preference fields it references.
-func fillCSS(css []byte, name string, prefs Preferences) ([]byte, error) {
+// prefs, filling in any theme preference fields it references.
+func fillCSS(css []byte, name string, prefs ThemePreferences) ([]byte, error) {
 	tmpl, err := template.New(name).Parse(string(css))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", name, err)
@@ -248,6 +279,12 @@ func fillCSS(css []byte, name string, prefs Preferences) ([]byte, error) {
 		return nil, fmt.Errorf("failed to render %s: %w", name, err)
 	}
 	return []byte(sb.String()), nil
+}
+
+// themeDir returns the folder of p's theme, holding its css and theme
+// preferences.
+func (p Preferences) themeDir() string {
+	return path.Join("themes", p.Theme)
 }
 
 // navLinkNames returns the content folder names listed in NavLinks, without

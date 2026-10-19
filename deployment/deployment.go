@@ -29,12 +29,12 @@ type Deployer interface {
 	CheckPush() error
 	// Push publishes buildDir, once it's set up and built.
 	Push(buildDir string) error
-	// Settings returns the settings to save in preferences.yaml.
+	// Settings returns the settings to save in settings.yaml.
 	Settings() Settings
 }
 
 // Settings are a deployment method's settings by name, as saved in
-// preferences.yaml, given with --deploy-setting or in environment variables.
+// settings.yaml, given with --deploy-setting or in environment variables.
 type Settings = map[string]string
 
 // Ask asks for a setting with prompt, showing hints beneath it, and returns
@@ -47,7 +47,7 @@ type Method struct {
 	Label string // as listed when asking which method to use
 	// Settings are the names of the settings it uses, other than Secrets.
 	Settings []string
-	// Secrets are settings never saved to preferences.yaml, such as API
+	// Secrets are settings never saved to settings.yaml, such as API
 	// keys. Each is given with --deploy-setting, in its environment variable
 	// (see EnvVar), or asked for with secret set.
 	Secrets []string
@@ -121,7 +121,7 @@ func (m Method) Validate(s Settings, from string) error {
 }
 
 // Gather returns m's settings: those given with --deploy-setting, then its
-// secrets' environment variables, then saved (from preferences.yaml or
+// secrets' environment variables, then saved (from settings.yaml or
 // detected), leaving out any saved secrets.
 func (m Method) Gather(saved, given Settings) Settings {
 	s := m.Saveable(saved)
@@ -137,7 +137,7 @@ func (m Method) Gather(saved, given Settings) Settings {
 	return s
 }
 
-// Saveable returns s without m's secrets, to save in preferences.yaml.
+// Saveable returns s without m's secrets, to save in settings.yaml.
 func (m Method) Saveable(s Settings) Settings {
 	var saveable Settings
 	for name, v := range s {

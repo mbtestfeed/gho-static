@@ -5,8 +5,8 @@
     padding: 0;
 }
 
-/* The templated values below are filled in from preferences.yaml at build
-   time. Change them there rather than here. */
+/* The templated values below are filled in from theme_preferences.yaml at
+   build time. Change them there rather than here. */
 :root {
     --banner-color: {{.BannerColor.Light}};
     --banner-text-color: {{.BannerTextColor.Light}};
