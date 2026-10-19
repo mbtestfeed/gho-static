@@ -3,7 +3,11 @@
 {{- range .SubPages}}
     <div class="gallery-item">
         <a href="{{$.Root}}{{.Link}}">
-            <img class="gallery-image" src="{{$.Root}}{{or .HeaderImage "static/img/gho_stephanie_64x64.svg"}}" alt="">
+        {{- with .HeaderImage}}
+            <img class="gallery-image" src="{{$.Root}}{{.}}" alt="">
+        {{- else}}
+            <img class="gallery-image" src="{{$.Root}}static/img/gho_placeholder_64x64.svg" alt="No image provided">
+        {{- end}}
             <div class="gallery-title">{{.Title}}</div>
         </a>
         {{- with .Published}}

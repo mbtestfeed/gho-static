@@ -178,7 +178,7 @@ A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing 
 
 Two folder names in `content/` are reserved, and work differently from other collections:
 
-- `content/gallery`: the gallery page shows each post as a square image tile, using the first image in the post's folder (alphabetically), or the logo if it has none. Each gallery post shows its markdown, then every image in its folder, in alphabetical order.
+- `content/gallery`: the gallery page shows each post as a square image tile, using the first image in the post's folder (alphabetically), or a grey placeholder image if it has none. Each gallery post shows its markdown, then every image in its folder, in alphabetical order.
 - `content/tags`: the tags page lists every tag used on the site, and is built again as a page for each tag, listing the pages that have it. These pages are made from the tags in your pages' front matter at each build, so the folder holds no posts of its own. Without it, tags are still shown, but don't link anywhere.
 
 ### CSS and JavaScript

@@ -132,7 +132,7 @@ func addDemoGallery(files, pics map[string]string, meta pageMeta, now time.Time)
 	meta.summary = "An example gallery post, with every picture."
 	addPage(files, allDir+"/post", ".md", contentPage("all_kitten_pictures", now, meta)+"\n"+credits, "")
 
-	// Shown in the gallery with the logo in place of an image.
+	// Shown in the gallery with the placeholder in place of an image.
 	name, date := "gallery_post_without_an_image", now.AddDate(0, 0, -(len(demoPics) + 1))
 	meta.summary, meta.tags = "An example gallery post, without a picture.", nil
 	addPage(files, "content/gallery/"+dates.PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
