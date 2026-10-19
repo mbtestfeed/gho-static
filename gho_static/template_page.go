@@ -10,8 +10,9 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
 
+	"gho-static/utils"
+	"gho-static/utils/dates"
 	"gho-static/utils/file_access"
 )
 
@@ -33,15 +34,6 @@ type SubPage struct {
 // to it, including the "..." added when it's cut short.
 const summaryLength = 200
 
-// truncate returns s cut to summaryLength characters, ending in "..." if
-// anything was cut.
-func truncate(s string) string {
-	if r := []rune(s); len(r) > summaryLength {
-		return string(r[:summaryLength-3]) + "..."
-	}
-	return s
-}
-
 // pageLink builds a link to the markdown page at mdPath (under the content
 // folder root), or returns nil if opts doesn't allow its folder to be built.
 // listed is whether the page's folder is listed by its parent's template
@@ -59,13 +51,11 @@ func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPa
 	if meta.Title == "" {
 		// Untitled pages are named after their folder, e.g. 20261012_my_post
 		// -> My post, or Untitled if the folder is only a date.
-		title := strings.ReplaceAll(PostName(path.Base(path.Dir(mdPath))), "_", " ")
-		if title == "" {
-			title = "untitled"
+		if meta.Title = utils.TitleFor(dates.PostName(path.Base(path.Dir(mdPath)))); meta.Title == "" {
+			meta.Title = "Untitled"
 		}
-		meta.Title = strings.ToUpper(title[:1]) + title[1:]
 	}
-	published, ok := parseDate(meta.Published)
+	published, ok := dates.Parse(meta.Published)
 	if !ok && opts.Publish && listed {
 		return nil, nil
 	}
@@ -76,10 +66,10 @@ func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPa
 	return &SubPage{
 		Title:      meta.Title,
 		Link:       link,
-		Published:  formatDate(meta.Published),
+		Published:  dates.Format(meta.Published),
 		Draft:      draft,
 		Unreleased: meta.Unreleased,
-		Summary:    truncate(meta.Summary),
+		Summary:    utils.Truncate(meta.Summary, summaryLength),
 		Tags:       tags,
 		published:  published,
 	}, nil
@@ -89,11 +79,10 @@ func (s source) pageLink(mdPath, root string, opts Options, listed bool) (*SubPa
 // folders opts doesn't allow, ordered most recently published first.
 func (s source) subPages(dir *file_access.ContentDir, root string, opts Options) ([]SubPage, error) {
 	var pages []SubPage
-	collection := strings.ReplaceAll(path.Base(dir.Path), "_", " ")
-	collection = strings.ToUpper(collection[:1]) + collection[1:]
+	collection := utils.TitleFor(path.Base(dir.Path))
 	for _, sub := range dir.Dirs {
 		for _, f := range sub.Files {
-			if !strings.EqualFold(filepath.Ext(f), ".md") {
+			if !utils.HasExt(f, ".md") {
 				continue
 			}
 			link, err := s.pageLink(f, root, opts, true)
@@ -137,7 +126,7 @@ func ReservedContentName(name string, post bool) string {
 func folderImages(files []string, root string) []string {
 	var images []string
 	for _, f := range files {
-		if slices.Contains(ImageExts, strings.ToLower(filepath.Ext(f))) {
+		if utils.HasExt(f, ImageExts...) {
 			images = append(images, "static/"+strings.TrimPrefix(f, root+"/"))
 		}
 	}
@@ -185,7 +174,7 @@ func (s source) collectTags(content *file_access.ContentDir, opts Options) ([]Ta
 	byKey := map[string]*Tag{}
 	err := walk(content, false, func(dir *file_access.ContentDir, listed bool) error {
 		for _, f := range dir.Files {
-			if !strings.EqualFold(filepath.Ext(f), ".md") {
+			if !utils.HasExt(f, ".md") {
 				continue
 			}
 			meta := s.md[f].Meta
@@ -201,7 +190,7 @@ func (s source) collectTags(content *file_access.ContentDir, opts Options) ([]Ta
 			}
 			for _, name := range meta.Tags {
 				// Tags differing only in case or punctuation share a page.
-				key := tagSlug(name)
+				key := utils.Slug(name, "tag")
 				t := byKey[key]
 				if t == nil {
 					tag := s.newTag(name, content.Path, opts.Publish)
@@ -229,9 +218,9 @@ func (s source) collectTags(content *file_access.ContentDir, opts Options) ([]Ta
 // newTag returns the tag name, linked to its page if the content folder
 // root has a tags template page.
 func (s source) newTag(name, root string, publish bool) Tag {
-	key := tagSlug(name)
+	key := utils.Slug(name, "tag")
 	t := Tag{Name: name, file: path.Join(tagsDir, key, "index.html")}
-	if fileExists(s, path.Join(root, tagsDir, tagsDir+".html")) {
+	if file_access.FileExists(s, path.Join(root, tagsDir, tagsDir+".html")) {
 		t.Link = t.file
 		if publish {
 			t.Link = path.Join(tagsDir, key) + "/"
@@ -240,45 +229,19 @@ func (s source) newTag(name, root string, publish bool) Tag {
 	return t
 }
 
-// tagSlug returns name lowercased, with anything other than letters, digits,
-// - and _ replaced by -, for use as a folder name.
-func tagSlug(name string) string {
-	slug := strings.Trim(strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
-			return unicode.ToLower(r)
-		}
-		return '-'
-	}, name), "-")
-	if slug == "" {
-		return "tag"
-	}
-	return slug
-}
-
-// PostName returns folder without its leading yyyymmdd date and the
-// underscore after it, if it has them.
-func PostName(folder string) string {
-	if len(folder) >= 8 && (len(folder) == 8 || folder[8] == '_') {
-		if _, err := time.Parse("20060102", folder[:8]); err == nil {
-			return strings.TrimPrefix(folder[8:], "_")
-		}
-	}
-	return folder
-}
-
 // hasListing reports whether dir has a template page listing its subfolders.
 func hasListing(dir *file_access.ContentDir) bool {
-	return slices.ContainsFunc(dir.Files, func(f string) bool { return strings.EqualFold(filepath.Ext(f), ".html") })
+	return slices.ContainsFunc(dir.Files, func(f string) bool { return utils.HasExt(f, ".html") })
 }
 
 // undatedPage returns the first markdown file directly in dir without a
 // valid published date, or "" if there is none.
 func (s source) undatedPage(dir *file_access.ContentDir) string {
 	for _, f := range dir.Files {
-		if !strings.EqualFold(filepath.Ext(f), ".md") {
+		if !utils.HasExt(f, ".md") {
 			continue
 		}
-		if _, ok := parseDate(s.md[f].Meta.Published); !ok {
+		if _, ok := dates.Parse(s.md[f].Meta.Published); !ok {
 			return f
 		}
 	}
@@ -354,8 +317,7 @@ func adjacent(pages []SubPage, link string) (previous, next *SubPage) {
 func (s source) writeTemplatePage(tmpl *template.Template, page Page, tmplPath, out string, assets []string) error {
 	name := filepath.Base(tmplPath)
 	if page.Meta.Title == "" {
-		title := strings.TrimSuffix(name, filepath.Ext(name))
-		page.Meta.Title = strings.ToUpper(title[:1]) + title[1:]
+		page.Meta.Title = utils.TitleFor(strings.TrimSuffix(name, filepath.Ext(name)))
 	}
 	if page.Tag != nil {
 		page.Meta.Title = page.Tag.Name

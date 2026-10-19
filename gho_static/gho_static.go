@@ -170,7 +170,7 @@ func readSource(fsys fs.FS, content *file_access.ContentDir, now time.Time) (sou
 	s := source{FS: fsys, md: map[string]mdFile{}}
 	return s, walk(content, false, func(dir *file_access.ContentDir, _ bool) error {
 		for _, f := range dir.Files {
-			if !strings.EqualFold(filepath.Ext(f), ".md") {
+			if !utils.HasExt(f, ".md") {
 				continue
 			}
 			mdBytes, err := fs.ReadFile(fsys, f)
@@ -197,7 +197,7 @@ func writeMarkdownPage(tmpl *template.Template, page Page, f mdFile, out, imgDir
 // the page via page.Root, renders page into the layout and writes it to out.
 func writePage(tmpl *template.Template, page Page, out string, assets []string) error {
 	for _, a := range assets {
-		if strings.EqualFold(filepath.Ext(a), ".css") {
+		if utils.HasExt(a, ".css") {
 			page.Styles = append(page.Styles, page.Root+a)
 		} else {
 			page.Scripts = append(page.Scripts, page.Root+a)
@@ -286,8 +286,7 @@ func (s source) pagePath(src, root string, publish bool) (file, link string, err
 	// A template page and its markdown intro share a name, and are one page.
 	pages := map[string]bool{}
 	for _, e := range entries {
-		ext := strings.ToLower(filepath.Ext(e.Name()))
-		if !e.IsDir() && (ext == ".md" || ext == ".html") {
+		if !e.IsDir() && utils.HasExt(e.Name(), ".md", ".html") {
 			pages[strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))] = true
 		}
 	}
@@ -327,7 +326,7 @@ func (s source) folderStatus(dir string) (draft, unreleased bool) {
 // that's a draft or has a publish date in the future, so isn't published.
 func (ls loadedSite) warnUnpublished(dir *file_access.ContentDir) {
 	for _, f := range dir.Files {
-		if !strings.EqualFold(filepath.Ext(f), ".md") {
+		if !utils.HasExt(f, ".md") {
 			continue
 		}
 		meta := ls.md[f].Meta
@@ -342,10 +341,4 @@ func (ls loadedSite) warnUnpublished(dir *file_access.ContentDir) {
 			ls.opts.Output.Warnf("%s %s, so it won't be published or deployed", f, strings.Join(reasons, " and "))
 		}
 	}
-}
-
-// fileExists reports whether name exists in fsys.
-func fileExists(fsys fs.FS, name string) bool {
-	_, err := fs.Stat(fsys, name)
-	return err == nil
 }

@@ -11,6 +11,8 @@ import (
 	"text/template"
 
 	"gopkg.in/yaml.v3"
+
+	"gho-static/utils/yaml_edit"
 )
 
 // Color is a pair of light and dark mode colors.
@@ -189,12 +191,12 @@ func RemoveFromList(path, key, value string) error {
 // SetDeployment saves d as the deployment setting in the preferences file
 // at path, keeping the rest of the file as it is.
 func SetDeployment(path string, d Deployment) error {
-	return editPreferences(path, func(root *yaml.Node) (bool, error) {
+	return yaml_edit.EditFile(path, func(root *yaml.Node) (bool, error) {
 		var value yaml.Node
 		if err := value.Encode(d); err != nil {
 			return false, err
 		}
-		old := mappingValue(root, "deployment")
+		old := yaml_edit.MappingValue(root, "deployment")
 		if old == nil {
 			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "deployment"}, &value)
 			return true, nil
@@ -212,14 +214,14 @@ func SetDeployment(path string, d Deployment) error {
 // path (see AddToList for empty and missing settings), writing the file
 // back if edit reports a change, keeping the rest of it as it is.
 func editList(path, key string, edit func(list *yaml.Node) bool) error {
-	return editPreferences(path, func(root *yaml.Node) (bool, error) {
-		list := mappingValue(root, key)
+	return yaml_edit.EditFile(path, func(root *yaml.Node) (bool, error) {
+		list := yaml_edit.MappingValue(root, key)
 		if list == nil {
 			var defaults yaml.Node
 			if err := defaults.Encode(DefaultPreferences); err != nil {
 				return false, err
 			}
-			if list = mappingValue(&defaults, key); list == nil {
+			if list = yaml_edit.MappingValue(&defaults, key); list == nil {
 				list = &yaml.Node{Kind: yaml.SequenceNode}
 			}
 			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, list)
@@ -232,50 +234,6 @@ func editList(path, key string, edit func(list *yaml.Node) bool) error {
 		}
 		return edit(list), nil
 	})
-}
-
-// editPreferences calls edit with the settings in the preferences file at
-// path (none if it's missing or empty), writing the file back if edit
-// reports a change, keeping the rest of it as it is.
-func editPreferences(path string, edit func(root *yaml.Node) (bool, error)) error {
-	b, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read %s: %w", path, err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return fmt.Errorf("failed to parse %s: %w", path, err)
-	}
-	if len(doc.Content) == 0 {
-		doc = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode}}}
-	}
-	root := doc.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return fmt.Errorf("can't change %s: it isn't a list of settings", path)
-	}
-	if changed, err := edit(root); err != nil || !changed {
-		return err
-	}
-
-	out, err := yaml.Marshal(&doc)
-	if err != nil {
-		return fmt.Errorf("failed to encode %s: %w", path, err)
-	}
-	if err := os.WriteFile(path, out, 0644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", path, err)
-	}
-	return nil
-}
-
-// mappingValue returns the value of key in the yaml mapping m, or nil if
-// it has none.
-func mappingValue(m *yaml.Node, key string) *yaml.Node {
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return m.Content[i+1]
-		}
-	}
-	return nil
 }
 
 // fillCSS executes css (named name, for errors) as a text template with

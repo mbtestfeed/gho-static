@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"gho-static/deployment"
-	"gho-static/generator"
 	"gho-static/gho_static"
 	"gho-static/utils"
+	"gho-static/utils/dates"
 )
 
 const Usage = `Usage: gho-static [flags] <site folder>
@@ -324,10 +324,10 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 			return cmd, fmt.Errorf("site folder %s does not exist. Create it first with `gho-static -g %s`, then rerun this command.", cmd.Site, cmd.Site)
 		}
 		if cmd.Mode == GeneratePost {
-			cmd.GenPath = filepath.Join(cmd.Site, "content", cmd.collection, generator.PostFolder(cmd.PostName, now))
+			cmd.GenPath = filepath.Join(cmd.Site, "content", cmd.collection, dates.PostFolder(cmd.PostName, now))
 			// Posts only go in collections: folders with a listing page.
 			if entries, err := os.ReadDir(filepath.Join(cmd.Site, "content", cmd.collection)); err == nil &&
-				!slices.ContainsFunc(entries, func(e os.DirEntry) bool { return !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".html") }) {
+				!slices.ContainsFunc(entries, func(e os.DirEntry) bool { return !e.IsDir() && utils.HasExt(e.Name(), ".html") }) {
 				return cmd, fmt.Errorf("can't create %s: %s is a page, not a collection, so can't hold posts", cmd.GenPath, cmd.collection)
 			}
 		}

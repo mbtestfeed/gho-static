@@ -3,6 +3,9 @@ package gho_static
 import (
 	"strings"
 	"time"
+
+	"gho-static/utils/dates"
+	"gho-static/utils/front_matter"
 )
 
 // FrontMatter is the YAML-style metadata block at the top of a markdown page.
@@ -24,15 +27,11 @@ type FrontMatter struct {
 // Unknown keys are ignored.
 func parseFrontMatter(md []byte) (FrontMatter, []byte) {
 	var fm FrontMatter
-	s := strings.ReplaceAll(string(md), "\r\n", "\n")
-	if !strings.HasPrefix(s, "---\n") {
+	header, rest, ok := front_matter.Split(string(md))
+	if !ok {
 		return fm, md
 	}
-	end := strings.Index(s[4:], "\n---")
-	if end == -1 {
-		return fm, md
-	}
-	header, body := s[4:4+end], s[4+end+len("\n---"):]
+	body := strings.TrimPrefix(rest, "---")
 
 	inTags := false // whether "- tag" lines follow a tags key
 	for _, line := range strings.Split(header, "\n") {
@@ -80,35 +79,15 @@ func parseList(s string) []string {
 	return items
 }
 
-// parseDate parses a YAML date or datetime, in local time unless it has an
-// explicit offset.
-func parseDate(s string) (time.Time, bool) {
-	for _, layout := range []string{"2006-01-02", "2006-01-02 15:04", "2006-01-02 15:04:05", time.RFC3339} {
-		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
-}
-
-// formatDate reformats a YAML date or datetime as yyyy/mm/dd, returning s
-// unchanged if it can't be parsed.
-func formatDate(s string) string {
-	if t, ok := parseDate(s); ok {
-		return t.Format("2006/01/02")
-	}
-	return s
-}
-
 // IsUnreleased reports whether Published is set and after now.
 func (fm FrontMatter) IsUnreleased(now time.Time) bool {
-	t, ok := parseDate(fm.Published)
+	t, ok := dates.Parse(fm.Published)
 	return ok && now.Before(t)
 }
 
 // ReleaseLine formats Published as yyyy/mm/dd hh:mm.
 func (fm FrontMatter) ReleaseLine() string {
-	if t, ok := parseDate(fm.Published); ok {
+	if t, ok := dates.Parse(fm.Published); ok {
 		return t.Format("2006/01/02 15:04")
 	}
 	return fm.Published
@@ -119,10 +98,10 @@ func (fm FrontMatter) ReleaseLine() string {
 func (fm FrontMatter) DateLine() string {
 	var parts []string
 	if fm.Published != "" {
-		parts = append(parts, "Published on "+formatDate(fm.Published))
+		parts = append(parts, "Published on "+dates.Format(fm.Published))
 	}
 	if fm.Edited != "" {
-		parts = append(parts, "last edited "+formatDate(fm.Edited))
+		parts = append(parts, "last edited "+dates.Format(fm.Edited))
 	}
 	line := strings.Join(parts, ", ")
 	if line != "" {

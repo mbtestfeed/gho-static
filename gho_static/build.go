@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"gho-static/utils"
 	"gho-static/utils/file_access"
 )
 
@@ -67,10 +68,10 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 		now = time.Now()
 	}
 
-	if !fileExists(fsys, "index.html") {
+	if !file_access.FileExists(fsys, "index.html") {
 		return loadedSite{}, fmt.Errorf("missing index.html in the site folder")
 	}
-	if !fileExists(fsys, "index.md") {
+	if !file_access.FileExists(fsys, "index.md") {
 		return loadedSite{}, fmt.Errorf("missing index.md in the site folder")
 	}
 
@@ -102,7 +103,7 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 		{"intro-sidebar", prefs.ShowIntroSidebar},
 		{"recent-activity", prefs.ShowRecentActivitySidebar},
 	} {
-		if tmplPath := path.Join("structure", sidebar.name, sidebar.name+".html"); sidebar.show && fileExists(fsys, tmplPath) {
+		if tmplPath := path.Join("structure", sidebar.name, sidebar.name+".html"); sidebar.show && file_access.FileExists(fsys, tmplPath) {
 			templates = append(templates, tmplPath)
 		}
 	}
@@ -128,10 +129,7 @@ func (ls loadedSite) layout(version string) (Page, error) {
 	var navLinks []NavLink
 	for _, name := range prefs.navLinkNames() {
 		srcs, _ := fs.Glob(ls, path.Join(content.Path, name, name+".*"))
-		srcs = slices.DeleteFunc(srcs, func(s string) bool {
-			ext := strings.ToLower(filepath.Ext(s))
-			return ext != ".md" && ext != ".html"
-		})
+		srcs = slices.DeleteFunc(srcs, func(s string) bool { return !utils.HasExt(s, ".md", ".html") })
 		if len(srcs) == 0 {
 			opts.Output.Warnf("no page found for nav link %q, so it was left out of the menu", name)
 			continue
@@ -204,7 +202,7 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 		return fmt.Errorf("failed to write .nojekyll: %w", err)
 	}
 	// The site's own static files (images, logo) are copied as is.
-	if fileExists(ls, "static") {
+	if file_access.FileExists(ls, "static") {
 		staticFS, err := fs.Sub(ls, "static")
 		if err == nil {
 			err = os.CopyFS(filepath.Join(buildDir, "static"), staticFS)
@@ -346,9 +344,8 @@ func (ls loadedSite) planContent(layout Page, shared []string) (contentPlan, err
 
 		assets := append([]string{}, shared...)
 		for _, f := range dir.Files {
-			ext := strings.ToLower(filepath.Ext(f))
-			isAsset := slices.Contains(assetExts, ext)
-			if !isAsset && !slices.Contains(ImageExts, ext) {
+			isAsset := utils.HasExt(f, assetExts...)
+			if !isAsset && !utils.HasExt(f, ImageExts...) {
 				continue
 			}
 			data, err := fs.ReadFile(ls, f)

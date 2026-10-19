@@ -4,16 +4,15 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"gho-static/cli"
 	"gho-static/deployment"
 	"gho-static/generator"
 	"gho-static/gho_static"
+	"gho-static/utils"
 	"gho-static/utils/output"
 )
 
@@ -26,16 +25,6 @@ var img embed.FS
 //
 //go:embed README.md
 var readme string
-
-// fileLink returns a file:// URL for path.
-func fileLink(path string) string {
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
-	}
-	// Windows paths (C:\...) need a leading slash to form file:///C:/...
-	link := url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(path), "/")}
-	return link.String()
-}
 
 // app runs gho-static's commands, asking questions and writing messages on
 // term, as of now.
@@ -186,7 +175,7 @@ func (a app) run(args []string) error {
 		return err
 	}
 	if cmd.Mode == cli.Build {
-		fmt.Fprintf(term.Out, "Built %s. You can view it at:\n    %s\n", cmd.Site, output.Link+fileLink(filepath.Join(cmd.Site, "build", "index.html"))+output.Reset)
+		fmt.Fprintf(term.Out, "Built %s. You can view it at:\n    %s\n", cmd.Site, output.Link+utils.FileLink(filepath.Join(cmd.Site, "build", "index.html"))+output.Reset)
 		a.printVersion(version)
 		return nil
 	}
@@ -205,7 +194,7 @@ func (a app) run(args []string) error {
 		if cmd.Clean {
 			kind = "clean static site"
 		}
-		fmt.Fprintf(term.Out, "Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, output.Link+fileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+output.Reset)
+		fmt.Fprintf(term.Out, "Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, output.Link+utils.FileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+output.Reset)
 		fmt.Fprintf(term.Out, "Basic site preferences can be edited at any time in %s.\n", filepath.Join(cmd.GenPath, "preferences.yaml"))
 		return nil
 	}
@@ -221,7 +210,7 @@ func (a app) run(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(term.Out, "Generated %s. You can view it at:\n    %s\n", cmd.GenPath, output.Link+fileLink(filepath.Join(cmd.Site, "build", filepath.FromSlash(file)))+output.Reset)
+	fmt.Fprintf(term.Out, "Generated %s. You can view it at:\n    %s\n", cmd.GenPath, output.Link+utils.FileLink(filepath.Join(cmd.Site, "build", filepath.FromSlash(file)))+output.Reset)
 	a.printVersion(version)
 	return nil
 }

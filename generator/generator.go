@@ -10,11 +10,14 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
 
 	"gopkg.in/yaml.v3"
 
 	"gho-static/gho_static"
+	"gho-static/utils"
+	"gho-static/utils/dates"
+	"gho-static/utils/file_access"
+	"gho-static/utils/front_matter"
 )
 
 // starter holds the starter site's files, laid out as in the target folder.
@@ -55,16 +58,6 @@ var contentPageTemplate string
 //go:embed templates/contact.md
 var contactText string
 
-// titleFor returns name with underscores as spaces and its first letter
-// capitalised.
-func titleFor(name string) string {
-	title := []rune(strings.ReplaceAll(name, "_", " "))
-	if len(title) > 0 {
-		title[0] = unicode.ToUpper(title[0])
-	}
-	return string(title)
-}
-
 // pageMeta is the front matter of a generated page, other than its title
 // and published date. Unset author and edited lines are left out. Clean
 // pages have only front matter, without a heading.
@@ -79,7 +72,7 @@ type pageMeta struct {
 func contentPage(name string, date time.Time, meta pageMeta) string {
 	page := frontMatter(name, date, meta)
 	if !meta.clean {
-		page += "\n# " + titleFor(name) + "\n"
+		page += "\n# " + utils.TitleFor(name) + "\n"
 	}
 	return page
 }
@@ -97,7 +90,7 @@ func frontMatter(name string, date time.Time, meta pageMeta) string {
 	if summary != "" {
 		summary = " " + summary
 	}
-	return fmt.Sprintf(contentPageTemplate, titleFor(name), summary, line("author", meta.author), date.Format("2006-01-02"),
+	return fmt.Sprintf(contentPageTemplate, utils.TitleFor(name), summary, line("author", meta.author), date.Format("2006-01-02"),
 		line("edited", meta.edited), meta.draft, meta.toc, strings.Join(meta.tags, ", "))
 }
 
@@ -122,14 +115,14 @@ const demoPicCredit = "[%s](https://commons.wikimedia.org/wiki/File:%s) by Milas
 // pics holds the pictures' contents by lowercased file name.
 func addDemoGallery(files, pics map[string]string, meta pageMeta, now time.Time) {
 	meta.tags = []string{"kittens"}
-	allDir := "content/gallery/" + PostFolder("all_kitten_pictures", now)
+	allDir := "content/gallery/" + dates.PostFolder("all_kitten_pictures", now)
 	var credits string
 	for i, pic := range demoPics {
 		file := strings.ToLower(pic)
 		name := strings.TrimSuffix(file, filepath.Ext(file))
 		date := now.AddDate(0, 0, -(i + 1))
-		dir := "content/gallery/" + PostFolder(name, date)
-		credit := fmt.Sprintf(demoPicCredit, titleFor(name), pic)
+		dir := "content/gallery/" + dates.PostFolder(name, date)
+		credit := fmt.Sprintf(demoPicCredit, utils.TitleFor(name), pic)
 		meta.summary = "An example gallery post, with one picture."
 		addPage(files, dir+"/post", ".md", contentPage(name, date, meta)+"\n"+credit, "")
 		files[dir+"/"+file] = pics[file]
@@ -142,7 +135,7 @@ func addDemoGallery(files, pics map[string]string, meta pageMeta, now time.Time)
 	// Shown in the gallery with the logo in place of an image.
 	name, date := "gallery_post_without_an_image", now.AddDate(0, 0, -(len(demoPics) + 1))
 	meta.summary, meta.tags = "An example gallery post, without a picture.", nil
-	addPage(files, "content/gallery/"+PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
+	addPage(files, "content/gallery/"+dates.PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
 }
 
 // cleanIndexText is a clean site's home page body.
@@ -152,7 +145,7 @@ const cleanIndexText = "You've built a static website in 'Clean' mode. There's n
 // extension) to files, with a markdown intro titled after name.
 func addListing(files map[string]string, path, name string) {
 	addPage(files, path, ".html", listingPageTemplate, listingCSS)
-	files[path+".md"] = "# " + titleFor(name) + "\n"
+	files[path+".md"] = "# " + utils.TitleFor(name) + "\n"
 }
 
 // addGallery adds the gallery page, linking to each post in its folder by
@@ -160,11 +153,6 @@ func addListing(files map[string]string, path, name string) {
 func addGallery(files map[string]string) {
 	addPage(files, "content/gallery/gallery", ".html", galleryPageTemplate, galleryCSS)
 	files["content/gallery/gallery.md"] = "# Gallery\n"
-}
-
-// PostFolder returns the folder name for post name published on date.
-func PostFolder(name string, date time.Time) string {
-	return date.Format("20060102") + "_" + name
 }
 
 // Generate writes a starter site with the given preferences into dir, with
@@ -186,7 +174,7 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 		if *img.path == "" || *img.path == img.defaultVal {
 			continue
 		}
-		if !slices.Contains(gho_static.ImageExts, strings.ToLower(filepath.Ext(*img.path))) {
+		if !utils.HasExt(*img.path, gho_static.ImageExts...) {
 			return fmt.Errorf("can't use %s %s: it must be one of these image types: %s", img.name, *img.path, strings.Join(gho_static.ImageExts, ", "))
 		}
 		b, err := os.ReadFile(*img.path)
@@ -201,10 +189,10 @@ func Generate(dir string, prefs gho_static.Preferences, images fs.FS, readme str
 		return err
 	}
 	maps.Copy(files, custom)
-	if err := newFolder(dir); err != nil {
+	if err := file_access.NewFolder(dir); err != nil {
 		return err
 	}
-	return writeFiles(dir, files)
+	return file_access.WriteFiles(dir, files)
 }
 
 // siteFiles returns the files of a starter site with the given preferences,
@@ -236,7 +224,7 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 		for _, name := range []string{"about", "contact"} {
 			addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
 		}
-		addPage(files, "content/blogs/"+PostFolder("first_post", now)+"/post", ".md", contentPage("first_post", now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
+		addPage(files, "content/blogs/"+dates.PostFolder("first_post", now)+"/post", ".md", contentPage("first_post", now, pageMeta{author: prefs.DefaultAuthor, clean: true}), "")
 		addListing(files, "content/blogs/blogs", "blogs")
 		addGallery(files)
 		return files, nil
@@ -251,7 +239,7 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 	for i, meta := range examplePosts {
 		name, date := fmt.Sprintf("example_%d", i+1), now.AddDate(0, -i, 0)
 		meta.author, meta.edited = author, edited
-		addPage(files, "content/blogs/"+PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
+		addPage(files, "content/blogs/"+dates.PostFolder(name, date)+"/post", ".md", contentPage(name, date, meta), "")
 	}
 	addDemoGallery(files, pics, pageMeta{author: author, edited: edited}, now)
 	for _, name := range []string{"about", "contact"} {
@@ -268,13 +256,13 @@ func siteFiles(prefs gho_static.Preferences, images fs.FS, readme string, clean 
 // it, named and titled after the folder, published at now, by author if set.
 // A clean page has only front matter.
 func GeneratePage(dir, author string, clean bool, now time.Time) error {
-	if err := newFolder(dir); err != nil {
+	if err := file_access.NewFolder(dir); err != nil {
 		return err
 	}
 	name := filepath.Base(dir)
 	files := map[string]string{}
 	addPage(files, name, ".md", contentPage(name, now, pageMeta{author: author, draft: true, clean: clean}), "")
-	return writeFiles(dir, files)
+	return file_access.WriteFiles(dir, files)
 }
 
 // GeneratePost creates the folder dir and writes a draft post.md for post
@@ -288,11 +276,11 @@ func GeneratePost(dir, name, author string, clean bool, now time.Time) error {
 		parentName := filepath.Base(parent)
 		addListing(files, parentName, parentName)
 	}
-	if err := newFolder(dir); err != nil {
+	if err := file_access.NewFolder(dir); err != nil {
 		return err
 	}
 	addPage(files, filepath.Base(dir)+"/post", ".md", contentPage(name, now, pageMeta{author: author, draft: true, clean: clean}), "")
-	return writeFiles(parent, files)
+	return file_access.WriteFiles(parent, files)
 }
 
 // DatePost sets the published date of the markdown page at mdPath in its
@@ -300,11 +288,11 @@ func GeneratePost(dir, name, author string, clean bool, now time.Time) error {
 // yyyymmdd_<name> form, replacing any existing date prefix.
 func DatePost(mdPath string, date time.Time) error {
 	dir := filepath.Dir(mdPath)
-	name := gho_static.PostName(filepath.Base(dir))
+	name := dates.PostName(filepath.Base(dir))
 	if name == "" {
 		name = "untitled"
 	}
-	newDir := filepath.Join(filepath.Dir(dir), PostFolder(name, date))
+	newDir := filepath.Join(filepath.Dir(dir), dates.PostFolder(name, date))
 	if _, err := os.Stat(newDir); err == nil && newDir != dir {
 		return fmt.Errorf("can't rename %s: %s already exists", dir, newDir)
 	}
@@ -328,14 +316,12 @@ func DatePost(mdPath string, date time.Time) error {
 // setPublished returns md with its published date set to date in its front
 // matter, adding front matter if it has none.
 func setPublished(md string, date time.Time) string {
-	md = strings.ReplaceAll(md, "\r\n", "\n")
 	line := "published: " + date.Format("2006-01-02") + "\n"
-	if end := strings.Index(md[min(4, len(md)):], "\n---"); strings.HasPrefix(md, "---\n") && end != -1 {
+	if header, rest, ok := front_matter.Split(md); ok {
 		// Add as the last line, overriding any invalid published value.
-		i := 4 + end + 1
-		return md[:i] + line + md[i:]
+		return "---\n" + header + "\n" + line + rest
 	}
-	return "---\n" + line + "---\n\n" + md
+	return "---\n" + line + "---\n\n" + strings.ReplaceAll(md, "\r\n", "\n")
 }
 
 // PublishDraft removes the draft line from the front matter of the markdown
@@ -358,17 +344,15 @@ func PublishDraft(mdPath string) error {
 // removeDraft returns md without the draft line in its front matter, or
 // unchanged if it has no front matter.
 func removeDraft(md string) string {
-	lf := strings.ReplaceAll(md, "\r\n", "\n")
-	end := strings.Index(lf[min(4, len(lf)):], "\n---")
-	if !strings.HasPrefix(lf, "---\n") || end == -1 {
+	header, rest, ok := front_matter.Split(md)
+	if !ok {
 		return md
 	}
-	header := strings.Split(lf[4:4+end], "\n")
-	header = slices.DeleteFunc(header, func(line string) bool {
+	lines := slices.DeleteFunc(strings.Split(header, "\n"), func(line string) bool {
 		key, _, _ := strings.Cut(line, ":")
 		return strings.TrimSpace(key) == "draft"
 	})
-	return "---\n" + strings.Join(header, "\n") + lf[4+end:]
+	return "---\n" + strings.Join(lines, "\n") + "\n" + rest
 }
 
 // addFiles adds each file in fsys to files, at its path with prefix added.
@@ -390,45 +374,4 @@ func addPage(files map[string]string, path, ext, content, css string) {
 	files[path+ext] = content
 	files[path+".css"] = css
 	files[path+".js"] = ""
-}
-
-// writeFiles writes each of files (slash separated paths relative to dir)
-// into dir, creating folders as needed and refusing to overwrite existing
-// files.
-func writeFiles(dir string, files map[string]string) error {
-	for name, content := range files {
-		path := filepath.Join(dir, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return fmt.Errorf("failed to create %s: %w", filepath.Dir(path), err)
-		}
-		if err := writeNewFile(path, content); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// newFolder creates dir along with any missing parents, returning an
-// os.IsExist error if dir itself already exists.
-func newFolder(dir string) error {
-	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
-		return err
-	}
-	return os.Mkdir(dir, 0755)
-}
-
-// writeNewFile writes content to path, refusing to overwrite an existing file.
-func writeNewFile(path, content string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create %s: %w", path, err)
-	}
-	_, err = f.WriteString(content)
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return fmt.Errorf("failed to write %s: %w", path, err)
-	}
-	return nil
 }
