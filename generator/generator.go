@@ -179,8 +179,10 @@ func addGallery(files map[string]string) {
 }
 
 // Generate writes a starter site with the given preferences into dir, with
-// images copied into static/img and themes into themes, refusing to
-// overwrite existing files. A logo or favicon other than the default is
+// images copied into static/img, refusing to overwrite existing files.
+// themes holds a themes folder laid out as in a site: its default theme and
+// custom themes readme are copied, and its other themes listed in the themes
+// showcase. A logo or favicon other than the default is
 // copied from its path into static/img too. Its home page is readme. A clean
 // site has a single empty post instead of the examples, and its pages have
 // only front matter.
@@ -230,10 +232,16 @@ func siteFiles(prefs gho_static.Preferences, images, themes fs.FS, readme string
 	if err := addFiles(files, images, "static/img/"); err != nil {
 		return nil, fmt.Errorf("failed to read images: %w", err)
 	}
-	defaultTheme, _ := fs.Sub(themes, gho_static.DefaultPreferences.Theme)
-	if err := addFiles(files, defaultTheme, "themes/"+gho_static.DefaultPreferences.Theme+"/"); err != nil {
+	defaultDir := gho_static.GhoStaticThemesDir + "/" + gho_static.DefaultPreferences.Theme
+	defaultTheme, _ := fs.Sub(themes, defaultDir)
+	if err := addFiles(files, defaultTheme, defaultDir+"/"); err != nil {
 		return nil, fmt.Errorf("failed to read the default theme: %w", err)
 	}
+	customReadme, err := fs.ReadFile(themes, gho_static.CustomThemesDir+"/README.md")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the custom themes readme: %w", err)
+	}
+	files[gho_static.CustomThemesDir+"/README.md"] = string(customReadme)
 	// Demo pictures go in the example gallery posts, not static/img.
 	pics := map[string]string{}
 	for name, data := range files {

@@ -38,7 +38,7 @@ gho-static --use-theme %[1]s mysite
 
 | Setting | Where it's set |
 | --- | --- |
-| Colours and font | `themes/%[1]s/theme_preferences.yaml` |
+| Colours and font | `theme_templates/.../%[1]s/theme_preferences.yaml` |
 | Site name and menu | `settings.yaml` |
 
 ## Image

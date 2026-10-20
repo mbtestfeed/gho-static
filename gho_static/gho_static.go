@@ -43,6 +43,13 @@ type Site struct {
 	IntroDescription string
 	SocialLinks      []SocialLink // only those with a URL
 	RecentActivity   []SubPage    // the most recently published posts in the recent activity sidebar's collections
+	CustomThemes     []ThemeInfo  // the themes in the site's custom themes folder, ordered by name
+}
+
+// ThemeInfo names a theme, with the summary from its theme preferences.
+type ThemeInfo struct {
+	Name    string
+	Summary string
 }
 
 // VersionComment returns an HTML comment naming the build version. It's

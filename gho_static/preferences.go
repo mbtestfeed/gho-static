@@ -27,7 +27,7 @@ type Color struct {
 type Preferences struct {
 	SiteName        string `yaml:"site_name"`
 	NavLinks        []string `yaml:"nav_links"` // content folder names, in menu order
-	Theme           string `yaml:"theme"`   // folder in themes/ holding the site's css and theme preferences
+	Theme           string `yaml:"theme"`   // folder in CustomThemesDir or GhoStaticThemesDir holding the site's css and theme preferences
 	Logo            string `yaml:"logo"`    // header image, relative to the site folder
 	Favicon         string `yaml:"favicon"` // browser tab icon, relative to the site folder
 	DefaultAuthor   string `yaml:"default_author"` // added to new markdown pages' front matter, if set
@@ -53,6 +53,44 @@ type ThemePreferences struct {
 	TagColor        Color  `yaml:"tag_color"`      // tag pill background
 	TagTextColor    Color  `yaml:"tag_text_color"` // tag pill text
 	Font            string `yaml:"font"`
+}
+
+// colorVariables are the css variables themes set from their colours, by
+// the theme preference each comes from.
+var colorVariables = []struct {
+	name  string
+	color func(ThemePreferences) Color
+}{
+	{"--banner-color", func(t ThemePreferences) Color { return t.BannerColor }},
+	{"--banner-text-color", func(t ThemePreferences) Color { return t.BannerTextColor }},
+	{"--background-color", func(t ThemePreferences) Color { return t.BackgroundColor }},
+	{"--text-color", func(t ThemePreferences) Color { return t.TextColor }},
+	{"--link-color", func(t ThemePreferences) Color { return t.Link }},
+	{"--link-clicked-color", func(t ThemePreferences) Color { return t.LinkClicked }},
+	{"--tag-color", func(t ThemePreferences) Color { return t.TagColor }},
+	{"--tag-text-color", func(t ThemePreferences) Color { return t.TagTextColor }},
+}
+
+// modeToggleCSS returns css swapping a page with a ticked #mode-toggle
+// checkbox (as on the themes showcase pages) to the opposite of the
+// visitor's light or dark mode, by setting t's colour variables to their
+// other mode's colours, until the page is left or reloaded.
+func (t ThemePreferences) modeToggleCSS() string {
+	vars := func(indent string, dark bool) string {
+		var sb strings.Builder
+		for _, v := range colorVariables {
+			c := v.color(t)
+			value := c.Light
+			if dark {
+				value = c.Dark
+			}
+			sb.WriteString(indent + v.name + ": " + value + ";\n")
+		}
+		return sb.String()
+	}
+	return "\n/* Added by Gho-Static: the colours the light/dark mode toggle swaps to. */\n" +
+		":root:has(#mode-toggle:checked) {\n    color-scheme: dark;\n" + vars("    ", true) + "}\n\n" +
+		"@media (prefers-color-scheme: dark) {\n    :root:has(#mode-toggle:checked) {\n        color-scheme: light;\n" + vars("        ", false) + "    }\n}\n"
 }
 
 // Deployment is how a site's build folder is published: a deployment
@@ -283,15 +321,46 @@ func fillCSS(css []byte, name string, prefs ThemePreferences) ([]byte, error) {
 	return []byte(sb.String()), nil
 }
 
-// themeDir returns the folder of theme, holding its css and theme
-// preferences.
-func themeDir(theme string) string {
-	return path.Join("themes", theme)
+// The folders of a site's themes, each holding a folder for each theme with
+// its css and theme preferences: those downloaded from the Gho-Static repo
+// (replaced by --get-all-themes), and the site's own.
+const (
+	ThemeTemplatesDir  = "theme_templates"
+	GhoStaticThemesDir = ThemeTemplatesDir + "/gho_static_themes"
+	CustomThemesDir    = ThemeTemplatesDir + "/custom_themes"
+)
+
+// ValidThemeName reports whether theme is a single folder name, as themes
+// are, rather than empty or a path.
+func ValidThemeName(theme string) bool {
+	return theme != "" && theme != "." && theme != ".." && !strings.ContainsAny(theme, `/\`)
 }
 
-// hasTheme reports whether the site in fsys has theme in its themes folder.
+// findTheme returns the folder of theme in the site in fsys, preferring a
+// custom theme to a Gho-Static one of the same name, and whether there is
+// one. An invalid theme name has none.
+func findTheme(fsys fs.FS, theme string) (string, bool) {
+	if !ValidThemeName(theme) {
+		return "", false
+	}
+	for _, dir := range []string{CustomThemesDir, GhoStaticThemesDir} {
+		if d := path.Join(dir, theme); file_access.FileExists(fsys, d) {
+			return d, true
+		}
+	}
+	return "", false
+}
+
+// FindTheme returns the folder of theme (slash separated, relative to the
+// site folder site), and whether there is one. See findTheme.
+func FindTheme(site, theme string) (string, bool) {
+	return findTheme(os.DirFS(site), theme)
+}
+
+// hasTheme reports whether the site in fsys has theme in its themes folders.
 func hasTheme(fsys fs.FS, theme string) bool {
-	return theme != "" && file_access.FileExists(fsys, themeDir(theme))
+	_, ok := findTheme(fsys, theme)
+	return ok
 }
 
 // navLinkNames returns the content folder names listed in NavLinks, without

@@ -28,6 +28,9 @@ Flags:
                           is content/<name>/<post>, adds a draft post.md in a
                           new content/<name>/YYYYMMDD_<post> folder inside
                           <site folder>, e.g. gho-static --generate content/news mysite
+                          If <path> is theme_templates/<name>, copies the
+                          site's currently selected theme into a new custom
+                          theme in theme_templates/custom_themes/<name>.
                           Builds afterwards.
   -c, --clean            With -g, generate markdown files with only their front
                           matter. A new site is named after its folder, with
@@ -102,6 +105,7 @@ const (
 	GetAllThemes             // download every theme into Site's themes folder
 	ListThemes               // list the themes that can be downloaded, and Site's own
 	Help                     // print Usage, and do nothing else
+	GenerateTheme            // copy Site's current theme into a new custom theme Theme at GenPath, then build Site
 )
 
 // Command is the work requested on the command line.
@@ -110,7 +114,7 @@ type Command struct {
 	Site     string // site folder to build; unset for GenerateSite
 	GenPath  string // folder to generate
 	PostName string // only set for GeneratePost
-	Theme    string // only set for UseTheme
+	Theme    string // only set for UseTheme and GenerateTheme
 	AllThemes bool  // with GenerateSite, also download every theme into the new site (--get-all-themes)
 	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
 	Yes      bool   // answer yes to every question (--yes)
@@ -145,8 +149,7 @@ func Parse(args []string) (Command, error) {
 			continue
 		case "use-theme":
 			useTheme, cmd.Theme = true, f.Val
-			// A theme is a single folder in themes/.
-			if cmd.Theme == "" || cmd.Theme == "." || cmd.Theme == ".." || strings.ContainsAny(cmd.Theme, `/\`) {
+			if !gho_static.ValidThemeName(cmd.Theme) {
 				return cmd, fmt.Errorf("--use-theme needs a theme name, e.g. --use-theme brochureware mysite")
 			}
 			continue
@@ -239,10 +242,11 @@ func Parse(args []string) (Command, error) {
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(cmd.GenPath)), "/")
 	isPage := parts[0] == "content" && len(parts) == 2
 	isPost := parts[0] == "content" && len(parts) == 3
+	isTheme := parts[0] == gho_static.ThemeTemplatesDir && len(parts) == 2
 	if parts[0] == "content" && len(parts) > 3 {
 		return cmd, fmt.Errorf("can't create %s: pages can only be nested one level deep, as posts in a collection", cmd.GenPath)
 	}
-	if !isPage && !isPost {
+	if !isPage && !isPost && !isTheme {
 		cmd.Mode, cmd.AllThemes = GenerateSite, allThemes
 		cmd.Prefs = gho_static.DefaultPreferences
 		if cmd.Clean {
@@ -259,7 +263,18 @@ func Parse(args []string) (Command, error) {
 	}
 
 	if allThemes {
-		return cmd, fmt.Errorf("--get-all-themes can't be used when generating a page or post. Run it on its own, e.g. gho-static --get-all-themes mysite")
+		return cmd, fmt.Errorf("--get-all-themes can't be used when generating a page, post or theme. Run it on its own, e.g. gho-static --get-all-themes mysite")
+	}
+	if isTheme {
+		if !gho_static.ValidThemeName(parts[1]) {
+			return cmd, fmt.Errorf("--generate theme_templates/<name> needs a theme name, e.g. --generate theme_templates/my_theme mysite")
+		}
+		if len(sites) == 0 {
+			return cmd, fmt.Errorf("missing site folder to create %s in", cmd.GenPath)
+		}
+		cmd.Mode, cmd.Site, cmd.Theme = GenerateTheme, sites[0], parts[1]
+		cmd.GenPath = filepath.Join(cmd.Site, filepath.FromSlash(gho_static.CustomThemesDir), cmd.Theme)
+		return cmd, nil
 	}
 	if reason := gho_static.ReservedContentName(parts[1], isPost); reason != "" {
 		return cmd, fmt.Errorf("can't create %s: %s", cmd.GenPath, reason)
@@ -399,9 +414,12 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 				cmd.NavLink = cmd.collection
 			}
 		}
-	case UseTheme, GetAllThemes, ListThemes:
+	case UseTheme, GetAllThemes, ListThemes, GenerateTheme:
 		if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
 			return cmd, fmt.Errorf("site folder %s does not exist", cmd.Site)
+		}
+		if _, ok := gho_static.FindTheme(cmd.Site, cmd.Theme); ok && cmd.Mode == GenerateTheme {
+			return cmd, fmt.Errorf("can't create %s: %s already has a theme called %s", cmd.GenPath, cmd.Site, cmd.Theme)
 		}
 	}
 	return cmd, nil

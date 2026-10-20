@@ -1,3 +1,9 @@
+# GHO-STATIC THEME FILE: don't edit it. Running gho-static --get-all-themes
+# replaces it, losing any changes. To make your own version of this theme,
+# select it with gho-static --use-theme default_developer_ugly, then copy it
+# into theme_templates/custom_themes with gho-static --generate theme_templates/<new_name>,
+# and edit the copy.
+
 # What the theme looks like, shown in the themes showcase.
 summary: Plain and functional, with light blue banners. Gho-Static's default theme.
 # Colours (for light and dark mode) and font, filled into this theme's CSS.

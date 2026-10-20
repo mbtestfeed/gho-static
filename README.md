@@ -110,7 +110,7 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 ## Flags
 
 - `-h, --help, -u, --usage`: print the usage text and exit.
-- `-g, --generate <path>`: create a new site at `<path>`. If `<path>` is `content/<name>`, adds a draft page to an existing site instead. If it's `content/<name>/<post>`, adds a dated draft post.
+- `-g, --generate <path>`: create a new site at `<path>`. If `<path>` is `content/<name>`, adds a draft page to an existing site instead. If it's `content/<name>/<post>`, adds a dated draft post. If it's `theme_templates/<name>`, copies the site's currently selected theme into a new custom theme (see Themes, below).
 - `-c, --clean`: with `-g`, generate markdown files with only their front matter, and a new site without the example content.
 - `-y, --yes`: with `-g`, don't ask for a deployment method. With `--deploy`, fail instead of asking for anything that isn't set up.
 - `--preview-publish`: build without drafts and unreleased pages, as publishing does, but with links that still work locally. Otherwise they're built, with a warning on each.
@@ -119,10 +119,10 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 - `--deploy`: build for publishing and deploy, using the deployment method and settings saved in `settings.yaml`, or asking for any that aren't.
 - `--deployment-method <github-pages|none>`: set up the site's build folder for deploying, and save the method in `settings.yaml`.
 - `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `settings.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
-- `--use-theme <name>`: switch the site to the theme `<name>` and rebuild it, downloading the theme first if it isn't in `themes/`. See Themes, below.
-- `--get-all-themes`: download every theme into `themes/`, replacing any already there. Can also be used with `-g`, to download them into the new site.
+- `--use-theme <name>`: switch the site to the theme `<name>` and rebuild it, downloading the theme first if the site doesn't have it. See Themes, below.
+- `--get-all-themes`: download every Gho-Static theme into `theme_templates/gho_static_themes/`, replacing any already there. Custom themes are left alone. Can also be used with `-g`, to download them into the new site.
 - `--publish-with-themes`: with `--publish`, `--preview-publish` or `--deploy`, keep the themes showcase collection, which is otherwise left out.
-- `--list-themes`: list the themes that can be downloaded and those in `themes/`, marking which are downloaded and which one the site uses.
+- `--list-themes`: list the themes that can be downloaded and the site's own, marking which are downloaded, which are custom, and which one the site uses.
 
 Single-letter flags can be combined, e.g. `-cy`. Run `gho-static --help` for the full usage text.
 
@@ -137,7 +137,9 @@ mysite/
   index.html            the page layout every page is built into
   content/              your pages and posts
   structure/            the header, footer and sidebars' HTML
-  themes/               the site's look: each theme's CSS, colours and font
+  theme_templates/      the site's look: each theme's CSS, colours and font
+    gho_static_themes/  themes from Gho-Static (don't edit these)
+    custom_themes/      your own themes
   static/               files copied as they are into the build
   build/                the built site (don't edit this, it's replaced on each build)
 ```
@@ -148,14 +150,19 @@ mysite/
 
 ### Themes
 
-A theme is a folder in `themes/`, and `theme` in `settings.yaml` names the one the site uses. Only the chosen theme's CSS is built into the site. New sites come with `default_developer_ugly`, which is plain and functional. Others can be downloaded from the [themes folder](https://github.com/mbtestfeed/gho-static/tree/main/themes) of this repo, such as `brochureware`, a slightly more modern look (at the time of writing), like you might see on a company's site:
+A theme is a folder in one of two places, and `theme` in `settings.yaml` names the one the site uses:
+
+- `theme_templates/gho_static_themes/`: themes from Gho-Static itself. Don't edit these, as `--get-all-themes` replaces them.
+- `theme_templates/custom_themes/`: your own themes, which `--get-all-themes` never changes. If a custom theme has the same name as a Gho-Static one, the custom one is used.
+
+Only the chosen theme's CSS is built into the site. New sites come with `default_developer_ugly`, which is plain and functional. Others can be downloaded from the [themes folder](https://github.com/mbtestfeed/gho-static/tree/main/theme_templates/gho_static_themes) of this repo, such as `brochureware`, a slightly more modern look (at the time of writing), like you might see on a company's site:
 
 ```
 gho-static --use-theme brochureware mysite
 gho-static --get-all-themes mysite
 ```
 
-The first switches the site to `brochureware`, downloading it if it isn't in `themes/` yet. The second downloads every theme, replacing any already there, so any changes to their files are lost: keep site-specific CSS in your project files instead (see below). Themes are downloaded with git, over SSH if you're authenticated with GitHub, otherwise anonymously over HTTPS. Theme field names should stay reasonably stable, but they may change between versions in ways that break a theme's compatibility.
+The first switches the site to `brochureware`, downloading it if the site doesn't have it yet. The second downloads every theme into `theme_templates/gho_static_themes/`, replacing any already there, so any changes to their files are lost: keep site-specific CSS in your project files instead (see below). Themes are downloaded with git, over SSH if you're authenticated with GitHub, otherwise anonymously over HTTPS. Theme field names should stay reasonably stable, but they may change between versions in ways that break a theme's compatibility.
 
 Each theme holds:
 
@@ -163,11 +170,21 @@ Each theme holds:
 - `structure/<part>/<part>.css`, styling the header, footer and each sidebar.
 - `theme_preferences.yaml`, with the theme's colours for light and dark mode and its font. The `{{...}}` values in its CSS are filled in from these, so change them here rather than in the CSS.
 
-To make your own theme, copy a theme's folder, rename it, edit its files, and set `theme` to its name.
+When building, Gho-Static adds the colours for the showcase pages' light/dark mode toggle to the end of each theme's `theme.css`, setting the same CSS variables the themes use (`--banner-color`, `--text-color` and so on). A theme using those variables gets the toggle without any CSS of its own.
 
-A page can be styled with a different theme from the rest of the site by setting `theme: <name>` in its front matter. If that theme isn't in `themes/`, the page is left out of the build.
+Theme names, in `settings.yaml`, front matter or the theme flags, must be a single folder name. A page whose theme isn't valid is left out of the build, with a warning.
 
-New sites (other than clean ones) have a themes showcase collection, in `content/themes`, linked in the menu after the gallery. It lists the themes available when your copy of Gho-Static was built, and has a page for each downloaded one, styled with that theme. It's left out when publishing or deploying unless you add `--publish-with-themes`.
+To make your own theme, start from a copy of the site's currently selected theme:
+
+```
+gho-static --generate theme_templates/my_theme mysite
+```
+
+This copies it into `theme_templates/custom_themes/my_theme`, without the don't-edit warnings at the top of Gho-Static's theme files, and adds a page for it to the themes showcase. Edit its files, then select it with `--use-theme my_theme`. To base it on another theme, select that one first.
+
+A page can be styled with a different theme from the rest of the site by setting `theme: <name>` in its front matter. If the site doesn't have that theme, the page is left out of the build.
+
+New sites (other than clean ones) have a themes showcase collection, in `content/themes`, linked in the menu after the gallery. It lists the themes available when your copy of Gho-Static was built, then the site's custom themes, marked as custom, with a page for each one the site has, styled with that theme. It marks the currently selected theme. It's left out when publishing or deploying unless you add `--publish-with-themes`.
 
 ### Markdown pages
 
@@ -210,7 +227,7 @@ A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing 
 
 Three folder names in `content/` work differently from other collections:
 
-- `content/themes`: the themes showcase (see Themes, above), left out when publishing or deploying unless you add `--publish-with-themes`.
+- `content/themes`: the themes showcase (see Themes, above), left out when publishing or deploying unless you add `--publish-with-themes`. Pages and collections can't be generated with this name.
 
 - `content/gallery`: the gallery page shows each post as a square image tile, using the first image in the post's folder (alphabetically), or a grey placeholder image if it has none. Each gallery post shows its markdown, then every image in its folder, in alphabetical order.
 - `content/tags`: the tags page lists every tag used on the site, and is built again as a page for each tag, listing the pages that have it. These pages are made from the tags in your pages' front matter at each build, so the folder holds no posts of its own. Without it, tags are still shown, but don't link anywhere.

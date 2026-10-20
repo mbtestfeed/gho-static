@@ -88,8 +88,11 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 	if err != nil {
 		return loadedSite{}, err
 	}
+	if !ValidThemeName(prefs.Theme) {
+		return loadedSite{}, fmt.Errorf("theme %q in settings.yaml isn't a valid theme name: it must be a single folder name", prefs.Theme)
+	}
 	if !hasTheme(fsys, prefs.Theme) {
-		return loadedSite{}, fmt.Errorf("theme %q in settings.yaml has no folder in themes/", prefs.Theme)
+		return loadedSite{}, fmt.Errorf("theme %q in settings.yaml has no folder in %s or %s", prefs.Theme, CustomThemesDir, GhoStaticThemesDir)
 	}
 
 	templates := []string{
@@ -170,6 +173,14 @@ func (ls loadedSite) layout(version string) (Page, error) {
 		},
 		Root: rootFor("index.html"),
 	}
+	entries, _ := fs.ReadDir(ls, CustomThemesDir)
+	for _, e := range entries {
+		if e.IsDir() {
+			// A summary that can't be read is left out, as the build fails anyway if the theme's used.
+			theme, _ := readOver(ls, path.Join(CustomThemesDir, e.Name(), "theme_preferences.yaml"), ThemePreferences{})
+			layout.Site.CustomThemes = append(layout.Site.CustomThemes, ThemeInfo{Name: e.Name(), Summary: theme.Summary})
+		}
+	}
 	var err error
 	if layout.Tags, err = ls.collectTags(content, opts); err != nil {
 		return Page{}, err
@@ -223,8 +234,12 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 
 	// The site's theme, and any other downloaded theme a page uses.
 	themes := []string{ls.prefs.Theme}
-	for _, f := range ls.md {
-		if t := f.Meta.Theme; t != "" && !slices.Contains(themes, t) && hasTheme(ls, t) {
+	for p, f := range ls.md {
+		t := f.Meta.Theme
+		if t != "" && !ValidThemeName(t) {
+			ls.opts.Output.Warnf("%s has theme %q, which isn't a valid theme name (it must be a single folder name), so it was left out", p, t)
+		}
+		if t != "" && !slices.Contains(themes, t) && hasTheme(ls, t) {
 			themes = append(themes, t)
 		}
 	}
@@ -262,14 +277,14 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 var structureParts = []string{"header", "footer", "intro-sidebar", "recent-activity"}
 
 // sharedFiles returns the paths of the css and js files linked from every
-// page styled with theme, in order: the theme's theme.css and the layout's
-// index.js, then each structure part's css (at the same path in the theme)
-// and js (beside its template).
-func sharedFiles(theme string) []string {
-	files := []string{path.Join(themeDir(theme), "theme.css"), "index.js"}
+// page styled with the theme in the folder dir, in order: the theme's
+// theme.css and the layout's index.js, then each structure part's css (at
+// the same path in the theme) and js (beside its template).
+func sharedFiles(dir string) []string {
+	files := []string{path.Join(dir, "theme.css"), "index.js"}
 	for _, p := range structureParts {
 		base := path.Join("structure", p, p)
-		files = append(files, path.Join(themeDir(theme), base+".css"), base+".js")
+		files = append(files, path.Join(dir, base+".css"), base+".js")
 	}
 	return files
 }
@@ -280,15 +295,21 @@ const themeBuildDir = "_theme"
 
 // planShared returns ls's non-empty shared css and js files for pages
 // styled with theme (see sharedFiles), to copy into the build's static
-// folder, with the theme's preference values filled into the css. The css
-// goes in a folder for the theme, so several themes can be built at once.
+// folder, with the theme's preference values filled into the css, and the
+// light/dark mode toggle's colours added to the end of its theme.css. The
+// css of every theme, custom or not, goes in a folder for the theme in the
+// same place, so several themes can be built at once.
 func (ls loadedSite) planShared(theme string) ([]staticFile, error) {
-	prefs, err := readOver(ls, path.Join(themeDir(theme), "theme_preferences.yaml"), DefaultThemePreferences)
+	dir, ok := findTheme(ls, theme)
+	if !ok {
+		return nil, fmt.Errorf("theme %q has no folder in %s or %s", theme, CustomThemesDir, GhoStaticThemesDir)
+	}
+	prefs, err := readOver(ls, path.Join(dir, "theme_preferences.yaml"), DefaultThemePreferences)
 	if err != nil {
 		return nil, err
 	}
 	var files []staticFile
-	for _, f := range sharedFiles(theme) {
+	for _, f := range sharedFiles(dir) {
 		name := path.Base(f)
 		data, err := fs.ReadFile(ls, f)
 		if os.IsNotExist(err) || (err == nil && len(data) == 0) {
@@ -300,6 +321,9 @@ func (ls loadedSite) planShared(theme string) ([]staticFile, error) {
 		if utils.HasExt(f, ".css") {
 			if data, err = fillCSS(data, name, prefs); err != nil {
 				return nil, err
+			}
+			if name == "theme.css" {
+				data = append(data, prefs.modeToggleCSS()...)
 			}
 			name = path.Join(themeBuildDir, theme, name)
 		}

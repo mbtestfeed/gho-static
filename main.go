@@ -23,11 +23,12 @@ import (
 //go:embed img
 var img embed.FS
 
-// themes holds the default theme, copied into each generated site's themes
-// folder, and every theme's theme_preferences.yaml, for the themes showcase.
-// Other themes are downloaded with --use-theme or --get-all-themes.
+// themes holds the default theme and the custom themes readme, copied into
+// each generated site's themes folder, and every Gho-Static theme's
+// theme_preferences.yaml, for the themes showcase. Other themes are
+// downloaded with --use-theme or --get-all-themes.
 //
-//go:embed themes/default_developer_ugly themes/*/theme_preferences.yaml
+//go:embed theme_templates/gho_static_themes/default_developer_ugly theme_templates/gho_static_themes/*/theme_preferences.yaml theme_templates/custom_themes/README.md
 var themes embed.FS
 
 // readme is the home page of each generated site, other than clean ones.
@@ -105,21 +106,28 @@ func (a app) listThemes(site, prefsPath string) error {
 	if err != nil {
 		return err
 	}
-	var local []string
-	entries, _ := os.ReadDir(filepath.Join(site, "themes"))
-	for _, e := range entries {
-		if e.IsDir() {
-			local = append(local, e.Name())
+	var local, custom []string
+	for _, dir := range []struct {
+		path  string
+		names *[]string
+	}{{gho_static.GhoStaticThemesDir, &local}, {gho_static.CustomThemesDir, &custom}} {
+		entries, _ := os.ReadDir(filepath.Join(site, filepath.FromSlash(dir.path)))
+		for _, e := range entries {
+			if e.IsDir() {
+				*dir.names = append(*dir.names, e.Name())
+			}
 		}
 	}
-	names := slices.Concat(remote, local)
+	names := slices.Concat(remote, local, custom)
 	slices.Sort(names)
 	for _, name := range slices.Compact(names) {
 		var notes []string
+		if slices.Contains(custom, name) {
+			notes = append(notes, "custom")
+		}
 		if slices.Contains(local, name) {
 			notes = append(notes, "downloaded")
-		}
-		if !slices.Contains(remote, name) {
+		} else if !slices.Contains(remote, name) && !slices.Contains(custom, name) {
 			notes = append(notes, "local only")
 		}
 		if name == prefs.Theme {
@@ -180,7 +188,6 @@ func (a app) run(args []string) error {
 			return err
 		}
 		images, _ := fs.Sub(img, "img")
-		themes, _ := fs.Sub(themes, "themes")
 		err = generator.Generate(cmd.GenPath, cmd.Prefs, images, themes, readme, cmd.Clean)
 	case cli.GeneratePage, cli.GeneratePost:
 		var prefs gho_static.Preferences
@@ -207,8 +214,30 @@ func (a app) run(args []string) error {
 		return nil
 	case cli.PublishDrafts:
 		return a.publishDrafts(cmd.Site, cmd.Yes)
+	case cli.GenerateTheme:
+		prefs, err := gho_static.ReadPreferences(prefsPath)
+		if err != nil {
+			return err
+		}
+		src, ok := gho_static.FindTheme(cmd.Site, prefs.Theme)
+		if !ok {
+			return fmt.Errorf("can't create %s: the site's theme, %q, has no folder in %s to copy", cmd.GenPath, prefs.Theme, gho_static.ThemeTemplatesDir)
+		}
+		images, _ := fs.Sub(img, "img")
+		if err := generator.GenerateTheme(cmd.Site, cmd.Theme, src, images, prefs.DefaultAuthor, now); err != nil {
+			if os.IsExist(err) {
+				return fmt.Errorf("%s already exists", cmd.GenPath)
+			}
+			return err
+		}
+		if version, err = a.build(cmd.Site, cmd.Options); err != nil {
+			return err
+		}
+		term.Infof("Created the %s theme in %s, as a copy of %s. Select it with --use-theme %s, or by setting theme in %s.\n", cmd.Theme, cmd.GenPath, prefs.Theme, cmd.Theme, prefsPath)
+		a.printVersion(version)
+		return nil
 	case cli.UseTheme:
-		if _, err := os.Stat(filepath.Join(cmd.Site, "themes", cmd.Theme)); os.IsNotExist(err) {
+		if _, ok := gho_static.FindTheme(cmd.Site, cmd.Theme); !ok {
 			if _, err := generator.GetThemes(cmd.Site, []string{cmd.Theme}, term.Output); err != nil {
 				return err
 			}
@@ -280,7 +309,7 @@ func (a app) run(args []string) error {
 			kind = "clean static site"
 		}
 		fmt.Fprintf(term.Out, "Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, output.Link+utils.FileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+output.Reset)
-		fmt.Fprintf(term.Out, "Basic site settings can be edited at any time in %s, and its look in %s.\n", filepath.Join(cmd.GenPath, "settings.yaml"), filepath.Join(cmd.GenPath, "themes"))
+		fmt.Fprintf(term.Out, "Basic site settings can be edited at any time in %s, and its look in %s.\n", filepath.Join(cmd.GenPath, "settings.yaml"), filepath.Join(cmd.GenPath, gho_static.ThemeTemplatesDir))
 		return nil
 	}
 

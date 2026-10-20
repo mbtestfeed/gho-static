@@ -118,6 +118,8 @@ func ReservedContentName(name string, post bool) string {
 		return "tags is reserved for the tags page, which is built from your pages' tags"
 	case strings.EqualFold(name, galleryDir) && !post:
 		return "gallery is reserved for the gallery, so can only hold posts"
+	case strings.EqualFold(name, ShowcaseDir):
+		return "themes is reserved for the themes showcase, which is left out when publishing unless --publish-with-themes is given"
 	}
 	return ""
 }

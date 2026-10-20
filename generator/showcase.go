@@ -65,6 +65,24 @@ func showcaseGallery(dir string, pics []string, now time.Time) string {
 	return sb.String()
 }
 
+// addShowcasePost adds a showcase post for theme to files, styled with it
+// and summarised as summary, published on date, with meta's author and
+// edited date. pics holds the demo pictures' contents by lowercased file
+// name; those it uses are copied into the post's folder.
+func addShowcasePost(files, pics map[string]string, theme, summary string, meta pageMeta, date time.Time) {
+	dir := "content/" + gho_static.ShowcaseDir + "/" + dates.PostFolder(theme, date)
+	pic := strings.ToLower(demoPics[1])
+	credit := fmt.Sprintf(demoPicCredit, "A kitten", demoPics[1])
+	tilePics := []string{demoPics[0], demoPics[2], demoPics[3]}
+	meta.summary, meta.theme = summary, theme
+	body := fmt.Sprintf(showcasePost, html.EscapeString(theme), pic, credit, showcaseGallery(dir, tilePics, date))
+	// The gallery's css lays out the gallery demo.
+	addPage(files, dir+"/post", ".md", contentPage(theme, date, meta)+"\n"+body, galleryCSS)
+	for _, p := range append([]string{demoPics[1]}, tilePics...) {
+		files[dir+"/"+strings.ToLower(p)] = pics[strings.ToLower(p)]
+	}
+}
+
 // addShowcase adds the themes showcase collection to files: a page listing
 // each theme in themes (by its theme_preferences.yaml, the default theme
 // first), and a post for each, styled with that theme, by meta's author and
@@ -72,23 +90,20 @@ func showcaseGallery(dir string, pics []string, now time.Time) string {
 // other's a day before the last. pics holds the demo pictures' contents by
 // lowercased file name.
 func addShowcase(files, pics map[string]string, themes fs.FS, meta pageMeta, now time.Time) error {
-	prefsFiles, err := fs.Glob(themes, "*/theme_preferences.yaml")
+	prefsFiles, err := fs.Glob(themes, gho_static.GhoStaticThemesDir+"/*/theme_preferences.yaml")
 	if err != nil {
 		return fmt.Errorf("failed to list themes: %w", err)
 	}
 	names := []string{gho_static.DefaultPreferences.Theme}
 	for _, f := range prefsFiles {
-		if name := path.Dir(f); !slices.Contains(names, name) {
+		if name := path.Base(path.Dir(f)); !slices.Contains(names, name) {
 			names = append(names, name)
 		}
 	}
 
-	pic := strings.ToLower(demoPics[1])
-	credit := fmt.Sprintf(demoPicCredit, "A kitten", demoPics[1])
-	tilePics := []string{demoPics[0], demoPics[2], demoPics[3]}
 	var items strings.Builder
 	for i, name := range names {
-		b, err := fs.ReadFile(themes, path.Join(name, "theme_preferences.yaml"))
+		b, err := fs.ReadFile(themes, path.Join(gho_static.GhoStaticThemesDir, name, "theme_preferences.yaml"))
 		if err != nil {
 			return fmt.Errorf("failed to read the %s theme's preferences: %w", name, err)
 		}
@@ -97,16 +112,7 @@ func addShowcase(files, pics map[string]string, themes fs.FS, meta pageMeta, now
 			return fmt.Errorf("failed to parse the %s theme's preferences: %w", name, err)
 		}
 		fmt.Fprintf(&items, showcaseItem, strconv.Quote(name), strconv.Quote(prefs.Summary))
-
-		date := now.AddDate(0, 0, -i)
-		dir := "content/" + gho_static.ShowcaseDir + "/" + dates.PostFolder(name, date)
-		meta.summary, meta.theme = prefs.Summary, name
-		body := fmt.Sprintf(showcasePost, html.EscapeString(name), pic, credit, showcaseGallery(dir, tilePics, now))
-		// The gallery's css lays out the gallery demo.
-		addPage(files, dir+"/post", ".md", contentPage(name, date, meta)+"\n"+body, galleryCSS)
-		for _, p := range append([]string{demoPics[1]}, tilePics...) {
-			files[dir+"/"+strings.ToLower(p)] = pics[strings.ToLower(p)]
-		}
+		addShowcasePost(files, pics, name, prefs.Summary, meta, now.AddDate(0, 0, -i))
 	}
 
 	page := "content/" + gho_static.ShowcaseDir + "/" + gho_static.ShowcaseDir

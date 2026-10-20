@@ -1,3 +1,9 @@
+/* GHO-STATIC THEME FILE: don't edit it. Running gho-static --get-all-themes
+   replaces it, losing any changes. To make your own version of this theme,
+   select it with gho-static --use-theme brochureware, then copy it into
+   theme_templates/custom_themes with gho-static --generate theme_templates/<new_name>, and
+   edit the copy. */
+
 /* Reset */
 *, *::before, *::after {
     box-sizing: border-box;
@@ -29,35 +35,6 @@
         --link-clicked-color: {{.LinkClicked.Dark}};
         --tag-color: {{.TagColor.Dark}};
         --tag-text-color: {{.TagTextColor.Dark}};
-    }
-}
-
-/* A page with a ticked #mode-toggle checkbox (as on the themes showcase
-   pages) swaps to the opposite of the visitor's light or dark mode, until
-   the page is left or reloaded. */
-:root:has(#mode-toggle:checked) {
-    color-scheme: dark;
-    --banner-color: {{.BannerColor.Dark}};
-    --banner-text-color: {{.BannerTextColor.Dark}};
-    --background-color: {{.BackgroundColor.Dark}};
-    --text-color: {{.TextColor.Dark}};
-    --link-color: {{.Link.Dark}};
-    --link-clicked-color: {{.LinkClicked.Dark}};
-    --tag-color: {{.TagColor.Dark}};
-    --tag-text-color: {{.TagTextColor.Dark}};
-}
-
-@media (prefers-color-scheme: dark) {
-    :root:has(#mode-toggle:checked) {
-        color-scheme: light;
-        --banner-color: {{.BannerColor.Light}};
-        --banner-text-color: {{.BannerTextColor.Light}};
-        --background-color: {{.BackgroundColor.Light}};
-        --text-color: {{.TextColor.Light}};
-        --link-color: {{.Link.Light}};
-        --link-clicked-color: {{.LinkClicked.Light}};
-        --tag-color: {{.TagColor.Light}};
-        --tag-text-color: {{.TagTextColor.Light}};
     }
 }
 
@@ -280,7 +257,9 @@ a.tag:visited {
     text-decoration: none;
 }
 
-/* The light/dark mode toggle as a pill, highlighted while ticked. */
+/* The light/dark mode toggle on the themes showcase pages, as a pill,
+   highlighted while ticked. Gho-Static adds the colours it swaps to the end
+   of this file when building. */
 .mode-toggle {
     display: inline-flex;
     align-items: center;
