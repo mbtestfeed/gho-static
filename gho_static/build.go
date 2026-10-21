@@ -264,6 +264,19 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 	if err := writeMarkdownPage(ls.tmpl, layout, ls.index, filepath.Join(buildDir, "index.html"), "", shared[ls.prefs.Theme]); err != nil {
 		return err
 	}
+	// 404.html at the build's root is served for missing pages by Cloudflare
+	// and GitHub Pages, at any path, so its links are from the site's root.
+	notFound := layout
+	if ls.opts.Publish {
+		notFound.Root = "/"
+	}
+	notFoundPage := mdFile{
+		Meta: FrontMatter{Title: "Page not found"},
+		Body: []byte("# Page not found\n\nThere's no page at this address. [Go to the home page](" + notFound.Root + layout.Site.Home + ")\n"),
+	}
+	if err := writeMarkdownPage(ls.tmpl, notFound, notFoundPage, filepath.Join(buildDir, "404.html"), "", shared[ls.prefs.Theme]); err != nil {
+		return err
+	}
 
 	plan, err := ls.planContent(layout, shared)
 	if err != nil {
@@ -449,7 +462,7 @@ func (ls loadedSite) planContent(layout Page, shared map[string][]string) (conte
 				p.page.SubPages = listing
 				if intro, ok := ls.md[stem+".md"]; ok {
 					p.page.Meta = intro.Meta
-					p.page.Intro = template.HTML(mdToHTML(intro.Body, p.page.Root, rel, intro.Meta.TOC))
+					p.page.Intro = template.HTML(mdToHTML(intro.Body, p.page.Root, rel))
 				}
 			}
 			plan.pages = append(plan.pages, p)

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gho-static/deployment/cloudflare_pages"
 	"gho-static/deployment/github_pages"
 	"gho-static/gho_static"
 	"gho-static/utils/output"
@@ -74,6 +75,15 @@ var Methods = []Method{
 		Detect: func(buildDir string) (Settings, bool) {
 			username, ok := github_pages.Detect(buildDir)
 			return Settings{"username": username}, ok
+		},
+	},
+	{
+		Name:     "cloudflare-pages",
+		Label:    "Cloudflare Pages",
+		Settings: []string{"account_id", "project", "domain"},
+		Secrets:  []string{"api_token"},
+		New: func(s Settings, ask Ask, out output.Output) Deployer {
+			return cloudflare_pages.New(s, ask, out)
 		},
 	},
 	{

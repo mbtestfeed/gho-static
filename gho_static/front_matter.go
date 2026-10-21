@@ -16,7 +16,6 @@ type FrontMatter struct {
 	Published string
 	Edited    string
 	Draft     bool
-	TOC       bool     // add a table of contents to the top of the page
 	Theme     string   // style the page with this theme instead of the site's, if it's downloaded
 	Tags      []string // as [a, b], a, b or "- a" lines beneath
 
@@ -61,8 +60,6 @@ func parseFrontMatter(md []byte) (FrontMatter, []byte) {
 			fm.Edited = val
 		case "draft":
 			fm.Draft = val == "true"
-		case "toc":
-			fm.TOC = val == "true"
 		case "theme":
 			fm.Theme = val
 		}

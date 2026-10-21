@@ -1,13 +1,16 @@
 package gho_static
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
+	"html"
 	"html/template"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -111,14 +114,80 @@ var assetExts = []string{".css", ".js"}
 
 var ImageExts =[]string{".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico"}
 
-// mdToHTML converts md to HTML, with a table of contents at the top if toc is
-// set. If imgDir is set, local image links are pointed at their copies under
-// static/imgDir, relative to the page via prefix.
-func mdToHTML(md []byte, prefix, imgDir string, toc bool) []byte {
+// tocMarker, on a line of its own in a page's markdown, is replaced with a
+// table of contents. GitHub hides it, as it's an HTML comment.
+const tocMarker = "<!-- toc -->"
+
+// tocEntry is a heading in a table of contents, with the headings beneath it.
+type tocEntry struct {
+	level    int
+	id, text string
+	children []*tocEntry
+}
+
+// tocEntries returns the headings after doc's first tocMarker, nested by
+// level, and whether it has a marker.
+func tocEntries(doc ast.Node) ([]*tocEntry, bool) {
+	var roots, stack []*tocEntry
+	found := false
+	ast.WalkFunc(doc, func(node ast.Node, entering bool) ast.WalkStatus {
+		if b, ok := node.(*ast.HTMLBlock); ok && !found && strings.TrimSpace(string(b.Literal)) == tocMarker {
+			found = true
+		}
+		h, ok := node.(*ast.Heading)
+		if !ok || !entering || !found {
+			return ast.GoToNext
+		}
+		var text strings.Builder
+		ast.WalkFunc(h, func(n ast.Node, entering bool) ast.WalkStatus {
+			if leaf := n.AsLeaf(); leaf != nil && entering {
+				text.Write(leaf.Literal)
+			}
+			return ast.GoToNext
+		})
+		e := &tocEntry{level: h.Level, id: h.HeadingID, text: text.String()}
+		for len(stack) > 0 && stack[len(stack)-1].level >= e.level {
+			stack = stack[:len(stack)-1]
+		}
+		if len(stack) == 0 {
+			roots = append(roots, e)
+		} else {
+			parent := stack[len(stack)-1]
+			parent.children = append(parent.children, e)
+		}
+		stack = append(stack, e)
+		return ast.SkipChildren
+	})
+	return roots, found
+}
+
+// tocList returns entries as a list of links, each with headings beneath it
+// in a details element, closed, under a summary of its link.
+func tocList(entries []*tocEntry) string {
+	var sb strings.Builder
+	sb.WriteString("<ul>\n")
+	for _, e := range entries {
+		link := `<a href="#` + html.EscapeString(e.id) + `">` + html.EscapeString(e.text) + "</a>"
+		if len(e.children) == 0 {
+			sb.WriteString("<li>" + link + "</li>\n")
+			continue
+		}
+		sb.WriteString("<li><details>\n<summary>" + link + "</summary>\n" + tocList(e.children) + "</details></li>\n")
+	}
+	sb.WriteString("</ul>\n")
+	return sb.String()
+}
+
+// mdToHTML converts md to HTML, with a table of contents of the headings
+// after its first tocMarker in its place. If imgDir is set, local image
+// links are pointed at their copies under static/imgDir, relative to the
+// page via prefix.
+func mdToHTML(md []byte, prefix, imgDir string) []byte {
 	// CommonExtensions already includes tables, fenced code, autolinks and
 	// strikethrough; footnotes and heading IDs generated from their text are
 	// added to them.
 	doc := markdown.Parse(md, parser.NewWithExtensions(parser.CommonExtensions|parser.Footnotes|parser.AutoHeadingIDs))
+	entries, toc := tocEntries(doc)
 	if imgDir != "" {
 		ast.WalkFunc(doc, func(node ast.Node, entering bool) ast.WalkStatus {
 			img, ok := node.(*ast.Image)
@@ -133,11 +202,30 @@ func mdToHTML(md []byte, prefix, imgDir string, toc bool) []byte {
 			return ast.GoToNext
 		})
 	}
-	flags := mdhtml.CommonFlags
-	if toc {
-		flags |= mdhtml.TOC
+	out := markdown.Render(doc, mdhtml.NewRenderer(mdhtml.RendererOptions{Flags: mdhtml.CommonFlags}))
+	if toc && len(entries) > 0 {
+		nav := `<nav class="toc">` + "\n" + `<h2 class="toc-title">Table of Contents</h2>` + "\n" + tocList(entries) + "</nav>"
+		out = bytes.Replace(out, []byte(tocMarker), []byte(nav), 1)
 	}
-	return markdown.Render(doc, mdhtml.NewRenderer(mdhtml.RendererOptions{Flags: flags}))
+	return alerts(out)
+}
+
+// alertRe matches the start of a GitHub-style alert: a quote whose first
+// line is [!TYPE], and the end of its paragraph if that's all it holds.
+var alertRe = regexp.MustCompile(`(?i)<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(</p>)?`)
+
+// alerts gives each GitHub-style alert in html the classes alert and
+// alert-<type>, and replaces its [!TYPE] with a title.
+func alerts(html []byte) []byte {
+	return alertRe.ReplaceAllFunc(html, func(m []byte) []byte {
+		sub := alertRe.FindSubmatch(m)
+		kind := strings.ToLower(string(sub[1]))
+		out := `<blockquote class="alert alert-` + kind + `">` + "\n" + `<p class="alert-title">` + strings.ToUpper(kind[:1]) + kind[1:] + "</p>\n"
+		if len(sub[2]) == 0 {
+			out += "<p>"
+		}
+		return []byte(out)
+	})
 }
 
 // toDiv indents content for placement inside one of the template's divs.
@@ -208,7 +296,7 @@ func readSource(fsys fs.FS, content *file_access.ContentDir, now time.Time) (sou
 // writePage. See mdToHTML for imgDir.
 func writeMarkdownPage(tmpl *template.Template, page Page, f mdFile, out, imgDir string, assets []string) error {
 	page.Meta = f.Meta
-	page.Content = toDiv(mdToHTML(f.Body, page.Root, imgDir, f.Meta.TOC))
+	page.Content = toDiv(mdToHTML(f.Body, page.Root, imgDir))
 	return writePage(tmpl, page, out, assets)
 }
 

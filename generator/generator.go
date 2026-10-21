@@ -97,6 +97,9 @@ func contentPage(name string, date time.Time, meta pageMeta) string {
 	if !meta.clean {
 		page += "\n# " + utils.TitleFor(name) + "\n"
 	}
+	if meta.toc {
+		page += "\n<!-- toc -->\n"
+	}
 	return page
 }
 
@@ -114,7 +117,7 @@ func frontMatter(name string, date time.Time, meta pageMeta) string {
 		summary = " " + summary
 	}
 	return fmt.Sprintf(contentPageTemplate, utils.TitleFor(name), summary, line("author", meta.author), date.Format("2006-01-02"),
-		line("edited", meta.edited), meta.draft, meta.toc, strings.Join(meta.tags, ", "), line("theme", meta.theme))
+		line("edited", meta.edited), meta.draft, strings.Join(meta.tags, ", "), line("theme", meta.theme))
 }
 
 // examplePosts are the front matter of each example blog post, in order.

@@ -53,14 +53,19 @@ Flags:
                           it, using the deployment method and settings saved
                           in its settings.yaml, or asking for any that
                           aren't. For GitHub Pages, commits the build folder
-                          and pushes it.
-  --deployment-method <github-pages|none>
+                          and pushes it. For Cloudflare Pages, uploads the
+                          files that changed.
+  --deployment-method <github-pages|cloudflare-pages|none>
                           Set up <site folder>/build for publishing, building
                           it first if it doesn't exist, and save the method in
                           settings.yaml. github-pages makes it a git repo,
                           with the <username>.github.io repo of the username
-                          saved in settings.yaml as its remote. Asks for
-                          the method (and username) if not given. With -g,
+                          saved in settings.yaml as its remote.
+                          cloudflare-pages uses the account_id, project and
+                          optional domain settings, creating the project and
+                          linking the domain if needed, with the API token in
+                          GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN. Asks for
+                          the method (and its settings) if not given. With -g,
                           used instead of asking.
   --deploy-setting <name=value>
                           A setting for the deployment method, e.g.
