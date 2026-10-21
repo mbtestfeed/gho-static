@@ -17,7 +17,7 @@ gho-static --use-theme <name> mysite
 gho-static --get-all-themes mysite
 ```
 
-This collection is left out when publishing or deploying, unless you add `--publish-with-themes`.
+This collection is left out when publishing or deploying.
 
 Your own themes go in `theme_templates/custom_themes`, which `--get-all-themes` never changes. To start one as a copy of the site's currently selected theme, run:
 

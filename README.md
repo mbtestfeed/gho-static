@@ -121,7 +121,6 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 - `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `settings.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
 - `--use-theme <name>`: switch the site to the theme `<name>` and rebuild it, downloading the theme first if the site doesn't have it. See Themes, below.
 - `--get-all-themes`: download every Gho-Static theme into `theme_templates/gho_static_themes/`, replacing any already there. Custom themes are left alone. Can also be used with `-g`, to download them into the new site.
-- `--publish-with-themes`: with `--publish`, `--preview-publish` or `--deploy`, keep the themes showcase collection, which is otherwise left out.
 - `--list-themes`: list the themes that can be downloaded and the site's own, marking which are downloaded, which are custom, and which one the site uses.
 
 Single-letter flags can be combined, e.g. `-cy`. Run `gho-static --help` for the full usage text.
@@ -184,7 +183,7 @@ This copies it into `theme_templates/custom_themes/my_theme`, without the don't-
 
 A page can be styled with a different theme from the rest of the site by setting `theme: <name>` in its front matter. If the site doesn't have that theme, the page is left out of the build.
 
-New sites (other than clean ones) have a themes showcase collection, in `content/themes`, linked in the menu after the gallery. It lists the themes available when your copy of Gho-Static was built, then the site's custom themes, marked as custom, with a page for each one the site has, styled with that theme. It marks the currently selected theme. It's left out when publishing or deploying unless you add `--publish-with-themes`.
+New sites (other than clean ones) have a themes showcase collection, in `content/themes`, linked in the menu after the gallery. It lists the themes available when your copy of Gho-Static was built, then the site's custom themes, marked as custom, with a page for each one the site has, styled with that theme. It marks the currently selected theme. It's left out when publishing or deploying.
 
 ### Markdown pages
 
@@ -227,7 +226,7 @@ A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing 
 
 Three folder names in `content/` work differently from other collections:
 
-- `content/themes`: the themes showcase (see Themes, above), left out when publishing or deploying unless you add `--publish-with-themes`. Pages and collections can't be generated with this name.
+- `content/themes`: the themes showcase (see Themes, above), left out when publishing or deploying. Pages and collections can't be generated with this name.
 
 - `content/gallery`: the gallery page shows each post as a square image tile, using the first image in the post's folder (alphabetically), or a grey placeholder image if it has none. Each gallery post shows its markdown, then every image in its folder, in alphabetical order.
 - `content/tags`: the tags page lists every tag used on the site, and is built again as a page for each tag, listing the pages that have it. These pages are made from the tags in your pages' front matter at each build, so the folder holds no posts of its own. Without it, tags are still shown, but don't link anywhere.

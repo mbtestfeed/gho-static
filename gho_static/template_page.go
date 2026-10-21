@@ -119,7 +119,7 @@ func ReservedContentName(name string, post bool) string {
 	case strings.EqualFold(name, galleryDir) && !post:
 		return "gallery is reserved for the gallery, so can only hold posts"
 	case strings.EqualFold(name, ShowcaseDir):
-		return "themes is reserved for the themes showcase, which is left out when publishing unless --publish-with-themes is given"
+		return "themes is reserved for the themes showcase, which is left out when publishing"
 	}
 	return ""
 }

@@ -80,9 +80,6 @@ Flags:
                           into <site folder>/themes, replacing any already
                           there. Can also be used with -g, to download them
                           into the new site.
-  --publish-with-themes   With --publish, --preview-publish or --deploy, keep
-                          the themes showcase collection (content/themes),
-                          which is otherwise left out.
   --list-themes           List the themes in the Gho-Static GitHub repo and in
                           <site folder>/themes, marking which are downloaded
                           and which one the site uses.
@@ -177,7 +174,7 @@ func Parse(args []string) (Command, error) {
 			continue
 		case "preview-publish":
 			cmd.Options.Preview = true
-		case "publish-with-themes":
+		case "publish-with-themes": // undocumented: for Gho-Static's own site
 			cmd.Options.WithThemes = true
 		case "p", "publish":
 			cmd.Options.Publish = true

@@ -23,6 +23,12 @@ const (
 	themesRepoHTTPS = "https://github.com/mbtestfeed/gho-static.git"
 )
 
+// LocalThemesEnvVar, if set, is a local copy of the Gho-Static repo that
+// themes are listed and copied from instead of GitHub, including any
+// uncommitted changes. It's for building Gho-Static's own site, so isn't
+// documented for users.
+const LocalThemesEnvVar = "GHO_STATIC_LOCAL_THEMES"
+
 // themeFileWarning starts the warning at the top of each of Gho-Static's own
 // theme files, in a css or yaml comment that ends at the first blank line.
 const themeFileWarning = "GHO-STATIC THEME FILE"
@@ -105,6 +111,16 @@ func themesRepo(out output.Output) string {
 
 // ListThemes returns the names of the themes in the Gho-Static repo.
 func ListThemes(out output.Output) ([]string, error) {
+	if local := os.Getenv(LocalThemesEnvVar); local != "" {
+		entries, err := os.ReadDir(filepath.Join(local, filepath.FromSlash(gho_static.GhoStaticThemesDir)))
+		var names []string
+		for _, e := range entries {
+			if e.IsDir() {
+				names = append(names, e.Name())
+			}
+		}
+		return names, err
+	}
 	if err := gitclient.Installed(); err != nil {
 		return nil, err
 	}
@@ -122,35 +138,44 @@ func ListThemes(out output.Output) ([]string, error) {
 // from the Gho-Static repo into site's Gho-Static themes folder, replacing
 // any already there. Custom themes are left alone. It returns the names of
 // the themes it got. It's fetched over SSH if GitHub authentication is set
-// up, otherwise anonymously over HTTPS.
+// up, otherwise anonymously over HTTPS. If LocalThemesEnvVar is set, they're
+// copied from there instead.
 func GetThemes(site string, names []string, out output.Output) ([]string, error) {
-	if err := gitclient.Installed(); err != nil {
-		return nil, err
-	}
 	themesDir := filepath.Join(site, filepath.FromSlash(gho_static.GhoStaticThemesDir))
-	out.Warnf("getting themes replaces their folders in %s, so any changes to those theme files will be lost. Keep site-specific CSS in your project files, and your own themes in %s, instead", themesDir, filepath.Join(site, filepath.FromSlash(gho_static.CustomThemesDir)))
-	out.Warnf("theme field names should stay reasonably stable, but they may change between versions in ways that break a theme's compatibility")
-	repo := themesRepo(out)
-
-	tmp, err := os.MkdirTemp("", "gho-static-themes-")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create a temporary folder: %w", err)
-	}
-	defer os.RemoveAll(tmp)
-	paths := []string{gho_static.GhoStaticThemesDir}
-	if len(names) > 0 {
-		paths = nil
-		for _, name := range names {
-			paths = append(paths, gho_static.GhoStaticThemesDir+"/"+name)
+	from := themesRepoHTTPS
+	src := ""
+	if local := os.Getenv(LocalThemesEnvVar); local != "" {
+		from = local
+		src = filepath.Join(local, filepath.FromSlash(gho_static.GhoStaticThemesDir))
+		out.Infof("Copying themes from %s.\n", src)
+	} else {
+		if err := gitclient.Installed(); err != nil {
+			return nil, err
 		}
-	}
-	if err := out.Step("Downloading themes from "+repo+"...", func() error {
-		return gitclient.SparseClone(repo, filepath.Join(tmp, "repo"), paths...)
-	}); err != nil {
-		return nil, err
+		out.Warnf("getting themes replaces their folders in %s, so any changes to those theme files will be lost. Keep site-specific CSS in your project files, and your own themes in %s, instead", themesDir, filepath.Join(site, filepath.FromSlash(gho_static.CustomThemesDir)))
+		out.Warnf("theme field names should stay reasonably stable, but they may change between versions in ways that break a theme's compatibility")
+		repo := themesRepo(out)
+
+		tmp, err := os.MkdirTemp("", "gho-static-themes-")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create a temporary folder: %w", err)
+		}
+		defer os.RemoveAll(tmp)
+		paths := []string{gho_static.GhoStaticThemesDir}
+		if len(names) > 0 {
+			paths = nil
+			for _, name := range names {
+				paths = append(paths, gho_static.GhoStaticThemesDir+"/"+name)
+			}
+		}
+		if err := out.Step("Downloading themes from "+repo+"...", func() error {
+			return gitclient.SparseClone(repo, filepath.Join(tmp, "repo"), paths...)
+		}); err != nil {
+			return nil, err
+		}
+		src = filepath.Join(tmp, "repo", filepath.FromSlash(gho_static.GhoStaticThemesDir))
 	}
 
-	src := filepath.Join(tmp, "repo", filepath.FromSlash(gho_static.GhoStaticThemesDir))
 	entries, err := os.ReadDir(src)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to read the downloaded themes: %w", err)
@@ -163,7 +188,7 @@ func GetThemes(site string, names []string, out output.Output) ([]string, error)
 	}
 	for _, name := range names {
 		if !slices.Contains(got, name) {
-			return nil, fmt.Errorf("there's no theme called %q in %s", name, themesRepoHTTPS)
+			return nil, fmt.Errorf("there's no theme called %q in %s", name, from)
 		}
 	}
 	for _, name := range got {
