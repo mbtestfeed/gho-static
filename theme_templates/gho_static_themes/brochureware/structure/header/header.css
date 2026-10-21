@@ -4,6 +4,11 @@
    theme_templates/custom_themes with gho-static --generate theme_templates/<new_name>, and
    edit the copy. */
 
+/* Links to a heading on the page stop below the fixed header, not under it. */
+html {
+    scroll-padding-top: calc(70px + 1em);
+}
+
 #header {
     position: fixed;
     top: 0;
