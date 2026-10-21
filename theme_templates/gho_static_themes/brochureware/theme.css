@@ -159,6 +159,55 @@ body {
     color: var(--muted-text-color);
 }
 
+/* GitHub-style alerts, e.g. > [!WARNING] in markdown. */
+#content .alert {
+    color: var(--text-color);
+}
+
+#content :is(.alert-warning, .alert-caution) {
+    border-left-color: #d29922;
+}
+
+.alert-title {
+    font-weight: 600;
+}
+
+/* The table of contents, from a <!-- toc --> line in markdown. */
+.toc {
+    margin: 1.5em 0;
+    padding: 0.75em 1.25em;
+    border-radius: 12px;
+    background-color: var(--surface-color);
+}
+
+.toc-title {
+    margin: 0 0 0.5em;
+    font-size: 1.2em;
+}
+
+.toc summary {
+    cursor: pointer;
+}
+
+.toc ul {
+    list-style: none;
+}
+
+/* Each level of heading is a little smaller and lighter than the last. */
+.toc > ul > li {
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+.toc ul ul li {
+    font-size: 0.95em;
+    font-weight: normal;
+}
+
+.toc > ul > li > details > ul > li {
+    font-weight: 500;
+}
+
 #content code {
     padding: 0.15em 0.4em;
     font-size: 0.875em;

@@ -1,8 +1,13 @@
 # Gho-Static
 
+> [!WARNING]
+> Gho-Static is still under active development, and a lot is likely to change. Use it at your own risk.
+
 Gho-Static is a simple static site generator, designed to make deploying easy. You write your pages in markdown, style them with CSS, and Gho-Static builds them into a plain HTML site you can open locally or publish to GitHub Pages with a single command.
 
 Gho-Static is intentionally simple. It's for making and deploying websites without interactive content, such as brochureware, blogs or portfolios. By design, it doesn't use any JavaScript by default. You're welcome to add your own JavaScript to pages for more advanced features, if you can write it yourself, but that's at your own risk. If Gho-Static doesn't do what you need, you're welcome to suggest or make changes on [GitHub](https://github.com/mbtestfeed/gho-static), but [it may just not be for you](https://www.merriam-webster.com/slang/bean-soup-theory), and that's okay.
+
+<!-- toc -->
 
 ## Requirements
 
@@ -107,6 +112,12 @@ The first command rebuilds the site after you edit it. The second goes through y
 
 When deploying to GitHub Pages, your site is served at `<username>.github.io`, and any of your other repos with Pages turned on is served at `<username>.github.io/<repo>`. If one of your content folders shares its name with such a repo, the repo's site takes over that path, and your page can't be reached. To fix this, either rename the folder, rename the repo, or turn Pages off on the repo.
 
+When deploying to Cloudflare Pages, your site is served at `<project>.pages.dev`, and the project is created the first time you deploy. Set the `account_id` and `project` settings (and optionally `domain`) with `--deploy-setting` or when asked, and give the API token in the `GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN` environment variable. Create the token with the Cloudflare Pages: Edit permission at https://dash.cloudflare.com/profile/api-tokens. A domain bought elsewhere is linked to the project for you, but you still need to add a CNAME record pointing it at `<project>.pages.dev` with your domain's DNS provider. A root domain, such as `example.com`, needs its DNS moved to Cloudflare instead. Only changed files are uploaded on each deploy.
+
+```
+GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN=<token> gho-static --deployment-method cloudflare-pages --deploy-setting account_id=<id> --deploy-setting project=mysite --deploy-setting domain=blog.example.com mysite
+```
+
 ## Flags
 
 - `-h, --help, -u, --usage`: print the usage text and exit.
@@ -117,7 +128,7 @@ When deploying to GitHub Pages, your site is served at `<username>.github.io`, a
 - `-p, --publish`: build for publishing. Each page is written as `folder/index.html`, and drafts and unreleased pages are left out. Can't be used with `--preview-publish`.
 - `--drafts`: go through each draft page, asking whether to publish it. With `--yes`, publishes them all.
 - `--deploy`: build for publishing and deploy, using the deployment method and settings saved in `settings.yaml`, or asking for any that aren't.
-- `--deployment-method <github-pages|none>`: set up the site's build folder for deploying, and save the method in `settings.yaml`.
+- `--deployment-method <github-pages|cloudflare-pages|none>`: set up the site's build folder for deploying, and save the method in `settings.yaml`.
 - `--deploy-setting <name=value>`: a setting for the deployment method, e.g. `username=<name>` for GitHub Pages, used instead of (and saved over) the one in `settings.yaml`. Can be given more than once. Secret settings, such as API keys, are never saved: give them with this, in a `GHO_STATIC_<METHOD>_<SETTING>` environment variable, or when asked.
 - `--use-theme <name>`: switch the site to the theme `<name>` and rebuild it, downloading the theme first if the site doesn't have it. See Themes, below.
 - `--get-all-themes`: download every Gho-Static theme into `theme_templates/gho_static_themes/`, replacing any already there. Custom themes are left alone. Can also be used with `-g`, to download them into the new site.
@@ -146,7 +157,7 @@ mysite/
 
 ### Settings
 
-`settings.yaml` holds the site's settings: its name, the menu links (`nav_links`, as content folder names in menu order), its `theme` (see below), the logo and favicon, the default author for new pages, and the intro sidebar's image, text and social links. Rebuild the site after changing it. Its `deployment` section holds how the site is deployed: a `method` (`github-pages` or `none`) and that method's settings, such as GitHub Pages' `username`, whose `<username>.github.io` repo the site is pushed to. It's saved when the site is generated or its deployment is set up, and used by `--deploy`.
+`settings.yaml` holds the site's settings: its name, the menu links (`nav_links`, as content folder names in menu order), its `theme` (see below), the logo and favicon, the default author for new pages, and the intro sidebar's image, text and social links. Rebuild the site after changing it. Its `deployment` section holds how the site is deployed: a `method` (`github-pages`, `cloudflare-pages` or `none`) and that method's settings, such as GitHub Pages' `username`, whose `<username>.github.io` repo the site is pushed to, or Cloudflare Pages' `account_id`, `project` and `domain`. It's saved when the site is generated or its deployment is set up, and used by `--deploy`.
 
 ### Themes
 
@@ -198,7 +209,6 @@ author: Your Name
 published: 2026-01-31
 edited: 2026-02-14
 draft: false
-toc: false
 tags: [news, updates]
 ---
 
@@ -211,11 +221,10 @@ Your content, in markdown.
 - `summary`: shown under the page's link in listings, and used as its description.
 - `author`, `published`, `edited`: shown in the byline. Pages without a published date are asked for one when building.
 - `draft: true`: shows the page with a DRAFT warning, and leaves it out when publishing, deploying or building with `--preview-publish`.
-- `toc: true`: adds a table of contents built from the page's headings.
 - `theme`: styles the page with this theme instead of the site's (see Themes, below).
 - `tags`: a list of tags, each linking to a page listing everything with that tag.
 
-The body is standard markdown, with tables, fenced code blocks, footnotes and strikethrough. HTML can be used as well.
+The body is standard markdown, with tables, fenced code blocks, footnotes and strikethrough. HTML can be used as well. A `<!-- toc -->` line is replaced with a table of contents built from the page's headings. Quotes starting with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]` are shown as alerts, as on GitHub.
 
 To include an image in a page or post, put it in the same folder as its markdown file in `content/`, then link to it from the markdown with `![picture caption](./my-image.png)`.
 
@@ -244,6 +253,6 @@ Empty CSS and JavaScript files are left out of the build, so there's no need to 
 
 ## More
 
-See [mbtestfeed.github.io](https://mbtestfeed.github.io) for more documentation, and report bugs or request features on the [issues page](https://github.com/mbtestfeed/gho-static/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute changes.
+See [mbtestfeed.github.io](https://mbtestfeed.github.io) for more documentation, and report bugs or request features on the [issues page](https://github.com/mbtestfeed/gho-static/issues). See [CONTRIBUTING.md](https://github.com/mbtestfeed/gho-static/blob/main/CONTRIBUTING.md) to contribute changes.
 
-Gho-Static is free to use for any purpose, at your own risk, under the [MIT License](LICENSE.md). If you build a site with it, please keep the "Built with" link in its footer.
+Gho-Static is free to use for any purpose, at your own risk, under the [MIT License](https://github.com/mbtestfeed/gho-static/blob/main/LICENSE.md). If you build a site with it, please keep the "Built with" link in its footer.

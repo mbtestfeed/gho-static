@@ -107,6 +107,55 @@ body {
     padding-left: 20px;
 }
 
+/* GitHub-style alerts, e.g. > [!WARNING] in markdown. */
+.alert {
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    border-left: 4px solid var(--link-color);
+}
+
+.alert-warning,
+.alert-caution {
+    border-left-color: #d29922;
+}
+
+.alert-title {
+    font-weight: bold;
+}
+
+/* The table of contents, from a <!-- toc --> line in markdown. */
+.toc {
+    margin: 1em 0;
+}
+
+.toc-title {
+    margin: 0 0 0.5em;
+    font-size: 1.2em;
+}
+
+.toc summary {
+    cursor: pointer;
+}
+
+.toc ul {
+    list-style: none;
+}
+
+/* Each level of heading is a little smaller and lighter than the last. */
+.toc > ul > li {
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+.toc ul ul li {
+    font-size: 0.95em;
+    font-weight: normal;
+}
+
+.toc > ul > li > details > ul > li {
+    font-weight: 600;
+}
+
 /* A gallery page's images, centred, at full size up to the content's
    width. */
 .page-images img {
