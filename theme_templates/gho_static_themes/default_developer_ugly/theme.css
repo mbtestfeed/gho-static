@@ -111,16 +111,19 @@ body {
 .alert {
     margin: 1em 0;
     padding: 0.5em 1em;
-    border-left: 4px solid var(--link-color);
+    border-left: 4px solid var(--alert-color);
+    background-color: color-mix(in srgb, var(--alert-color) 10%, transparent);
 }
 
-.alert-warning,
-.alert-caution {
-    border-left-color: #d29922;
-}
+.alert-note { --alert-color: #4493f8; }
+.alert-tip { --alert-color: #3fb950; }
+.alert-important { --alert-color: #ab7df8; }
+.alert-warning { --alert-color: #d29922; }
+.alert-caution { --alert-color: #f85149; }
 
 .alert-title {
     font-weight: bold;
+    color: var(--alert-color);
 }
 
 /* The table of contents, from a <!-- toc --> line in markdown. */

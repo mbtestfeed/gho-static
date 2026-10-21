@@ -162,14 +162,19 @@ body {
 /* GitHub-style alerts, e.g. > [!WARNING] in markdown. */
 #content .alert {
     color: var(--text-color);
+    border-left-color: var(--alert-color);
+    background-color: color-mix(in srgb, var(--alert-color) 10%, var(--surface-color));
 }
 
-#content :is(.alert-warning, .alert-caution) {
-    border-left-color: #d29922;
-}
+.alert-note { --alert-color: #4493f8; }
+.alert-tip { --alert-color: #3fb950; }
+.alert-important { --alert-color: #ab7df8; }
+.alert-warning { --alert-color: #d29922; }
+.alert-caution { --alert-color: #f85149; }
 
 .alert-title {
     font-weight: 600;
+    color: var(--alert-color);
 }
 
 /* The table of contents, from a <!-- toc --> line in markdown. */
