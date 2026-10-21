@@ -20,6 +20,9 @@ Gho-Static is intentionally simple. It's for making and deploying websites witho
 
 ### Download a published binary
 
+> [!NOTE]
+> There are no published binaries yet, so Gho-Static can't be installed this way. Run it from its source code instead (see below).
+
 1. Go to the [releases page](https://github.com/mbtestfeed/gho-static/releases) and download the binary for your operating system.
 2. On macOS or Linux, make it executable: `chmod +x gho-static`
 3. To run it from any folder as just `gho-static`, move it into a folder on your `PATH`. `~/.local/bin` works well, as it doesn't need admin rights:
