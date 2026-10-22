@@ -80,7 +80,8 @@ type Page struct {
 	Footer   template.HTML
 	IntroSidebar template.HTML // empty if the site has no intro sidebar template
 	RecentActivity template.HTML // empty if the site has no recent activity template
-	Styles   []string
+	Styles   []string // linked in the head
+	DeferredStyles []string // linked at the end of the body, so they don't hold up the page being drawn
 	Scripts  []string
 	SubPages []SubPage // only set for content .html templates
 	Intro    template.HTML // a content .html template's markdown intro, from the .md file named like it
@@ -305,7 +306,13 @@ func writeMarkdownPage(tmpl *template.Template, page Page, f mdFile, out, imgDir
 func writePage(tmpl *template.Template, page Page, out string, assets []string) error {
 	for _, a := range assets {
 		if utils.HasExt(a, ".css") {
-			page.Styles = append(page.Styles, page.Root+a)
+			// Only the theme's main and header styles are needed before the
+			// page is first drawn; the rest load after it.
+			if base := path.Base(a); strings.HasPrefix(a, "static/"+themeBuildDir+"/") && (base == "theme.css" || base == "header.css") {
+				page.Styles = append(page.Styles, page.Root+a)
+			} else {
+				page.DeferredStyles = append(page.DeferredStyles, page.Root+a)
+			}
 		} else {
 			page.Scripts = append(page.Scripts, page.Root+a)
 		}
