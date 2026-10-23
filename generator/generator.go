@@ -75,6 +75,11 @@ var galleryCSS string
 //go:embed templates/content.md
 var contentPageTemplate string
 
+// aboutText is the starter site's about page body.
+//
+//go:embed templates/about.md
+var aboutText string
+
 // contactText is the starter site's contact page body.
 //
 //go:embed templates/contact.md
@@ -293,6 +298,7 @@ func siteFiles(prefs gho_static.Preferences, images, themes fs.FS, readme string
 		meta := pageMeta{summary: "The site's " + name + " page.", author: author, edited: edited, tags: []string{"example tag"}}
 		addPage(files, "content/"+name+"/"+name, ".md", contentPage(name, now, meta), "")
 	}
+	files["content/about/about.md"] += aboutText
 	files["content/contact/contact.md"] += contactText
 	addListing(files, "content/blogs/blogs", "blogs")
 	addGallery(files)
