@@ -1,3 +1,7 @@
+
+> [!NOTE]
+> This is the Gho-Static starter site's default page. If you're not viewing it on gho-static.com or mbtestfeed.github.io, whoever generated this site hasn't replaced it, so the site is likely unaffiliated with mbtestfeed or Gho-Static, who take no responsibility for this website's content.
+
 Gho-Static is a project that's primarily built to satisfy the needs of one person - myself. There's enough static generators out there in the world that I could have really just used one of those, but I felt like building one myself - partially for learning, partially because it's an interesting (yet reasonably well defined) challenge, and partially for the joy of building something. There's nothing particularly wrong with any of the other static site generators - and if I'm being honest, you should probably just pick one of the more popular ones if you're in the market. (I hear good things about [Hugo](https://github.com/gohugoio/hugo)..?)
 
 I chose Go as the baseline language behind it because... I like Go? Does there need to be much more reason? It's a well supported language, which makes a very nice compromise between developer experience and speed.

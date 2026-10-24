@@ -55,11 +55,17 @@ func withoutWarning(content string) string {
 // summary saying what it's based on. If the site has a themes showcase, a
 // post for the theme is added to it, published at now, by author if set,
 // with the demo pictures in images.
-func GenerateTheme(site, name, src string, images fs.FS, author string, now time.Time) error {
+func GenerateTheme(site, name, src string, images fs.FS, author string, now time.Time) (err error) {
 	dst := filepath.Join(site, filepath.FromSlash(gho_static.CustomThemesDir), name)
 	if err := file_access.NewFolder(dst); err != nil {
 		return err
 	}
+	// A half-made theme would block trying again.
+	defer func() {
+		if err != nil {
+			os.RemoveAll(dst)
+		}
+	}()
 	files := map[string]string{}
 	srcFS, err := fs.Sub(os.DirFS(site), src)
 	if err == nil {

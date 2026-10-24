@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -93,6 +94,23 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 	}
 	if !hasTheme(fsys, prefs.Theme) {
 		return loadedSite{}, fmt.Errorf("theme %q in settings.yaml has no folder in %s or %s", prefs.Theme, CustomThemesDir, GhoStaticThemesDir)
+	}
+	// Pages using a missing theme are left out (see leftOut): expected in the
+	// themes showcase, so only warned about if it's built, but an error
+	// anywhere else.
+	showcaseBuilt := !(opts.Preview || opts.Publish) || opts.WithThemes
+	for _, p := range slices.Sorted(maps.Keys(s.md)) {
+		theme := s.md[p].Meta.Theme
+		if theme == "" || hasTheme(fsys, theme) {
+			continue
+		}
+		rel := strings.TrimPrefix(p, content.Path+"/")
+		if !strings.HasPrefix(rel, ShowcaseDir+"/") {
+			return loadedSite{}, fmt.Errorf("%s uses theme %q, which has no folder in %s or %s", p, theme, CustomThemesDir, GhoStaticThemesDir)
+		}
+		if showcaseBuilt {
+			opts.Output.Warnf("%s uses theme %q, which isn't downloaded, so it was left out", p, theme)
+		}
 	}
 
 	templates := []string{
