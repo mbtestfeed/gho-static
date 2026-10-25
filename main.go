@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -89,7 +90,7 @@ func (a app) publishDrafts(site string, yes bool) error {
 		if err := generator.PublishDraft(page); err != nil {
 			return err
 		}
-		a.term.Infof("Published %s\n", page)
+		a.term.Successf("Published %s\n", page)
 	}
 	return nil
 }
@@ -137,7 +138,8 @@ func (a app) listThemes(site, prefsPath string) error {
 		if len(notes) > 0 {
 			line += " (" + strings.Join(notes, ", ") + ")"
 		}
-		a.term.Infof("%s\n", line)
+		// The list is what was asked for, so is written even if quiet.
+		fmt.Fprintln(a.term.Out, line)
 	}
 	a.term.Infof("Switch theme with --use-theme <name>, or download them all with --get-all-themes.\n")
 	return nil
@@ -146,6 +148,10 @@ func (a app) listThemes(site, prefsPath string) error {
 func main() {
 	a := app{term: cli.Stdio(), now: time.Now()}
 	if err := a.run(os.Args[1:]); err != nil {
+		if errors.Is(err, cli.ErrMissingPath) {
+			// Shown after the usage, so it needs to stand out from it.
+			err = errors.New(output.Red + "error: " + err.Error() + output.Reset)
+		}
 		fmt.Fprintln(a.term.Err, err)
 		os.Exit(1)
 	}
@@ -154,11 +160,15 @@ func main() {
 // run does what args (without the program name) ask, asking for anything
 // missing.
 func (a app) run(args []string) error {
-	term, now := a.term, a.now
 	cmd, err := cli.Parse(args)
+	a.term.Quiet = cmd.Quiet
+	term, now := a.term, a.now
 	if err == nil && cmd.Mode == cli.Help {
 		fmt.Fprint(term.Out, cli.Usage)
 		return nil
+	}
+	if errors.Is(err, cli.ErrMissingPath) {
+		fmt.Fprint(term.Out, cli.Usage+"\n")
 	}
 	if err == nil {
 		cmd, err = cli.Resolve(cmd, term, now)
@@ -233,7 +243,7 @@ func (a app) run(args []string) error {
 		if version, err = a.build(cmd.Site, cmd.Options); err != nil {
 			return err
 		}
-		term.Infof("Created the %s theme in %s, as a copy of %s. Select it with --use-theme %s, or by setting theme in %s.\n", cmd.Theme, cmd.GenPath, prefs.Theme, cmd.Theme, prefsPath)
+		term.Successf("Created the %s theme in %s, as a copy of %s. Select it with --use-theme %s, or by setting theme in %s.\n", cmd.Theme, cmd.GenPath, prefs.Theme, cmd.Theme, prefsPath)
 		a.printVersion(version)
 		return nil
 	case cli.UseTheme:
@@ -256,7 +266,7 @@ func (a app) run(args []string) error {
 		if err != nil {
 			return err
 		}
-		term.Infof("Got themes: %s. Choose one with --use-theme, or by setting theme in %s.\n", strings.Join(names, ", "), prefsPath)
+		term.Successf("Got themes: %s. Choose one with --use-theme, or by setting theme in %s.\n", strings.Join(names, ", "), prefsPath)
 		return nil
 	case cli.ListThemes:
 		return a.listThemes(cmd.Site, prefsPath)
@@ -267,7 +277,7 @@ func (a app) run(args []string) error {
 		if err := gho_static.SetDeployment(prefsPath, cmd.Deployment); err != nil {
 			return fmt.Errorf("%s was deployed, but its deployment settings couldn't be saved: %w", cmd.Site, err)
 		}
-		term.Infof("Deployed %s.\n", cmd.Site)
+		term.Successf("Deployed %s.\n", cmd.Site)
 		// There's no new version when deploying without rebuilding.
 		if version != "" {
 			a.printVersion(version)
@@ -305,14 +315,14 @@ func (a app) run(args []string) error {
 		if version, err = a.build(cmd.GenPath, cmd.Options); err != nil {
 			return err
 		}
-		fmt.Fprint(term.Out, output.Grey+cli.Usage+output.Reset+"\n")
+		term.Infof("%s", output.Grey+cli.Usage+output.Reset+"\n")
 		a.printVersion(version)
 		kind := "default static site demo"
 		if cmd.Clean {
 			kind = "clean static site"
 		}
 		fmt.Fprintf(term.Out, "Congrats! You now have a %s, built locally. You can view what this looks like at:\n    %s\n", kind, output.Link+utils.FileLink(filepath.Join(cmd.GenPath, "build", "index.html"))+output.Reset)
-		fmt.Fprintf(term.Out, "Basic site settings can be edited at any time in %s, and its look in %s.\n", filepath.Join(cmd.GenPath, "settings.yaml"), filepath.Join(cmd.GenPath, gho_static.ThemeTemplatesDir))
+		term.Infof("Basic site settings can be edited at any time in %s, and its look in %s.\n", filepath.Join(cmd.GenPath, "settings.yaml"), filepath.Join(cmd.GenPath, gho_static.ThemeTemplatesDir))
 		return nil
 	}
 

@@ -129,6 +129,7 @@ GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN=<token> gho-static --deployment-method clo
 - `-y, --yes`: with `-g`, don't ask for a deployment method. With `--deploy`, fail instead of asking for anything that isn't set up.
 - `--preview-publish`: build without drafts and unreleased pages, as publishing does, but with links that still work locally. Otherwise they're built, with a warning on each.
 - `-p, --publish`: build for publishing. Each page is written as `folder/index.html`, and drafts and unreleased pages are left out. Can't be used with `--preview-publish`.
+- `-q, --quiet`: only print warnings, errors and messages saying what was done, leaving out progress and tips.
 - `--drafts`: go through each draft page, asking whether to publish it. With `--yes`, publishes them all.
 - `--deploy`: build for publishing and deploy, using the deployment method and settings saved in `settings.yaml`, or asking for any that aren't.
 - `--deployment-method <github-pages|cloudflare-pages|none>`: set up the site's build folder for deploying, and save the method in `settings.yaml`.

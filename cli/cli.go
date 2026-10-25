@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +47,8 @@ Flags:
   -y, --yes               With -g, don't ask for a deployment method.
                           With --deploy, fail instead of asking for anything
                           that isn't set up.
+  -q, --quiet             Only print warnings, errors and messages saying
+                          what was done, leaving out progress and tips.
   --drafts                Go through each draft page in <site folder>, asking
                           whether to publish it (removing its "draft: true").
                           With --yes, publishes them all.
@@ -92,6 +95,10 @@ Flags:
 Single-letter flags can be combined, e.g. -cy.
 `
 
+// ErrMissingPath is returned by Parse when no site folder or path to
+// generate is given.
+var ErrMissingPath = errors.New("no site folder was given. Add the path to one at the end, e.g. gho-static mysite")
+
 // Mode is what a Command does.
 type Mode int
 
@@ -121,6 +128,7 @@ type Command struct {
 	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
 	Yes      bool   // answer yes to every question (--yes)
 	Clean    bool   // generate without example content (--clean)
+	Quiet    bool   // write only warnings, errors and success messages (--quiet)
 	Options  gho_static.Options
 	Prefs    gho_static.Preferences // only set for GenerateSite
 	Deployer deployment.Deployer    // only set for GenerateSite, SetupDeployment and Deploy
@@ -187,6 +195,8 @@ func Parse(args []string) (Command, error) {
 			cmd.Options.Publish = true
 		case "y", "yes":
 			cmd.Yes = true
+		case "q", "quiet":
+			cmd.Quiet = true
 		case "c", "clean":
 			cmd.Clean = true
 		case "deploy":
@@ -216,7 +226,7 @@ func Parse(args []string) (Command, error) {
 		cmd.GenPath, sites = positional[0], positional[1:]
 	}
 	if len(positional) == 0 && cmd.GenPath == "" {
-		return cmd, fmt.Errorf("missing path argument")
+		return cmd, ErrMissingPath
 	}
 
 	if generate && (useTheme || listThemes) {

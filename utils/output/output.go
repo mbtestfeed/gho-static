@@ -22,6 +22,9 @@ const (
 type Output struct {
 	Out io.Writer // everything but warnings and errors
 	Err io.Writer // warnings and errors
+
+	// Quiet leaves out everything but warnings, errors and success messages.
+	Quiet bool
 }
 
 // out returns where o writes everything but warnings and errors.
@@ -40,8 +43,17 @@ func (o Output) err() io.Writer {
 	return o.Err
 }
 
-// Infof writes a message, formatted as with fmt.Printf.
+// Infof writes a message, formatted as with fmt.Printf, unless o is quiet.
 func (o Output) Infof(format string, args ...any) {
+	if o.Quiet {
+		return
+	}
+	fmt.Fprintf(o.out(), format, args...)
+}
+
+// Successf writes a message saying something was done, formatted as with
+// fmt.Printf, even if o is quiet.
+func (o Output) Successf(format string, args ...any) {
 	fmt.Fprintf(o.out(), format, args...)
 }
 
@@ -58,8 +70,12 @@ func (o Output) Errorf(format string, args ...any) {
 
 // Step writes message, runs task, then ends the line with "Done! :)" if it
 // succeeded. Only plain text and newlines are written (no cursor movement),
-// so it reads the same in Windows and Unix-like terminals.
+// so it reads the same in Windows and Unix-like terminals. If o is quiet,
+// it only runs task.
 func (o Output) Step(message string, task func() error) error {
+	if o.Quiet {
+		return task()
+	}
 	fmt.Fprint(o.out(), message+" ")
 	if err := task(); err != nil {
 		// Leave the line, so the error starts on its own.

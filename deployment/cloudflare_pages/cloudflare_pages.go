@@ -156,7 +156,7 @@ func (d Deployer) Push(buildDir string) error {
 		return err
 	})
 	if err == nil {
-		d.Infof("This deployment is at %s, and the site at https://%s/\n", url, p.Subdomain)
+		d.Successf("This deployment is at %s, and the site at https://%s/\n", url, p.Subdomain)
 	}
 	return err
 }
