@@ -125,8 +125,8 @@ func (d Deployer) CheckPush() error {
 }
 
 // Setup makes buildDir a git repo, with d's repo (if set) as its remote. If
-// buildDir isn't a repo yet, it's replaced with a clone of the repo so its
-// history is kept; the site should be built into it afterwards.
+// buildDir doesn't exist yet, it's a clone of the repo so its history is
+// kept; the site should be built into it afterwards.
 func (d Deployer) Setup(buildDir string) error {
 	if err := gitclient.Installed(); err != nil {
 		return err
@@ -141,21 +141,25 @@ func (d Deployer) Setup(buildDir string) error {
 		if err := CheckRepo(d.repo()); err != nil {
 			return err
 		}
-		if gitclient.IsRepo(buildDir) {
-			if err := gitclient.SetRemote(buildDir, d.repo()); err != nil {
+		if !gitclient.IsRepo(buildDir) {
+			if _, err := os.Stat(buildDir); err != nil {
+				return gitclient.Clone(d.repo(), buildDir)
+			}
+			// An existing build is made a repo in place, keeping its files
+			// in case it's deployed without rebuilding (--no-rebuild).
+			if err := gitclient.Init(buildDir); err != nil {
 				return err
 			}
-			// The build is regenerated each time, so its own history can give
-			// way to the repo's, keeping pushes from being rejected.
-			if branch := gitclient.RemoteBranch(buildDir); branch != "" {
-				return gitclient.ResetOnto(buildDir, branch)
-			}
-			return nil
 		}
-		if err := os.RemoveAll(buildDir); err != nil {
-			return fmt.Errorf("failed to remove %s: %w", buildDir, err)
+		if err := gitclient.SetRemote(buildDir, d.repo()); err != nil {
+			return err
 		}
-		return gitclient.Clone(d.repo(), buildDir)
+		// The build is regenerated each time, so its own history can give
+		// way to the repo's, keeping pushes from being rejected.
+		if branch := gitclient.RemoteBranch(buildDir); branch != "" {
+			return gitclient.ResetOnto(buildDir, branch)
+		}
+		return nil
 	})
 }
 

@@ -367,6 +367,7 @@ type Options struct {
 	Preview    bool // leave out drafts and unreleased pages, as publishing does, but keep local links
 	Publish    bool // leave out drafts and unreleased pages, and write pages as folder/index.html linked by folder
 	WithThemes bool // keep the themes showcase collection when previewing or publishing
+	NoRebuild  bool // when deploying, deploy the build folder as it is, which should already be built for publishing
 
 	Output output.Output // where build warnings are written
 	Now    time.Time     // the build's time, deciding which pages are unreleased, or the current time if zero

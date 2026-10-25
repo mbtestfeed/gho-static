@@ -181,6 +181,8 @@ func Parse(args []string) (Command, error) {
 			cmd.Options.Preview = true
 		case "publish-with-themes": // undocumented: for Gho-Static's own site
 			cmd.Options.WithThemes = true
+		case "no-rebuild": // undocumented: for deploying one build of Gho-Static's own site to several places
+			cmd.Options.NoRebuild = true
 		case "p", "publish":
 			cmd.Options.Publish = true
 		case "y", "yes":

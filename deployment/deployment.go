@@ -195,8 +195,16 @@ func Deploy(site string, d Deployer, opts gho_static.Options) (string, error) {
 		return "", err
 	}
 	buildDir := filepath.Join(site, "build")
+	if opts.NoRebuild {
+		if _, err := os.Stat(buildDir); err != nil {
+			return "", fmt.Errorf("can't deploy %s without rebuilding, as it hasn't been built: %w", site, err)
+		}
+	}
 	if err := d.Setup(buildDir); err != nil {
 		return "", err
+	}
+	if opts.NoRebuild {
+		return "", d.Push(buildDir)
 	}
 	opts.Publish = true
 	version, err := gho_static.Build(site, opts)

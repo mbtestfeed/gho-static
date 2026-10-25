@@ -46,14 +46,16 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Deploy to GitHub Pages
+      # Built once, so both deploys have the same build version.
+      - name: Build site
         run: |
-          go run main.go --generate --yes ../site_gh
-          go run main.go --deploy --publish-with-themes --yes --deployment-method github-pages --deploy-setting username=mbtestfeed ../site_gh
+          go run main.go --generate --yes ../site
+          go run main.go --publish --publish-with-themes ../site
+
+      - name: Deploy to GitHub Pages
+        run: go run main.go --deploy --no-rebuild --yes --deployment-method github-pages --deploy-setting username=mbtestfeed ../site
 
       - name: Deploy to Cloudflare Pages
         env:
           GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          go run main.go --generate --yes ../site_cf
-          go run main.go --deploy --publish-with-themes --yes --deployment-method cloudflare-pages --deploy-setting account_id=${{ secrets.CLOUDFLARE_ACCOUNT_ID }} --deploy-setting project=gho-static --deploy-setting domain=gho-static.com ../site_cf
+        run: go run main.go --deploy --no-rebuild --yes --deployment-method cloudflare-pages --deploy-setting account_id=${{ secrets.CLOUDFLARE_ACCOUNT_ID }} --deploy-setting project=gho-static --deploy-setting domain=gho-static.com ../site

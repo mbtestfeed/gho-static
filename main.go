@@ -268,7 +268,10 @@ func (a app) run(args []string) error {
 			return fmt.Errorf("%s was deployed, but its deployment settings couldn't be saved: %w", cmd.Site, err)
 		}
 		term.Infof("Deployed %s.\n", cmd.Site)
-		a.printVersion(version)
+		// There's no new version when deploying without rebuilding.
+		if version != "" {
+			a.printVersion(version)
+		}
 		return nil
 	}
 	if cmd.Mode != cli.Build && os.IsExist(err) {
