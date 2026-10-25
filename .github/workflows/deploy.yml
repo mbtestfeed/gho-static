@@ -10,18 +10,34 @@ jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      checks: write
     env:
       # Use this checkout's themes, rather than fetching them from GitHub.
       GHO_STATIC_LOCAL_THEMES: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
+      # A failing test fails this step, so the deploy steps below are skipped.
+      - name: Run tests
+        run: go test -json ./... > test-results.json
+
+      - name: Report test results
+        if: success() || failure()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Go tests
+          path: test-results.json
+          reporter: golang-json
+
       # Deploy key with write access to mbtestfeed/mbtestfeed.github.io.
-      - uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.GH_PAGES_DEPLOY_KEY }}
 
