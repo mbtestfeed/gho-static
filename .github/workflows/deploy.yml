@@ -1,0 +1,43 @@
+name: Deploy site
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    env:
+      # Use this checkout's themes, rather than fetching them from GitHub.
+      GHO_STATIC_LOCAL_THEMES: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Deploy key with write access to mbtestfeed/mbtestfeed.github.io.
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.GH_PAGES_DEPLOY_KEY }}
+
+      - name: Set git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy to GitHub Pages
+        run: |
+          go run main.go --generate --yes ../site_gh
+          go run main.go --deploy --publish-with-themes --yes --deployment-method github-pages --deploy-setting username=mbtestfeed ../site_gh
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          go run main.go --generate --yes ../site_cf
+          go run main.go --deploy --publish-with-themes --yes --deployment-method cloudflare-pages --deploy-setting account_id=${{ secrets.CLOUDFLARE_ACCOUNT_ID }} --deploy-setting project=gho-static --deploy-setting domain=gho-static.com ../site_cf
