@@ -49,13 +49,13 @@ jobs:
       # Built once, so both deploys have the same build version.
       - name: Build site
         run: |
-          go run main.go --generate --yes ../site
-          go run main.go --publish --publish-with-themes ../site
+          go run main.go --generate --yes --quiet ../site
+          go run main.go --publish --publish-with-themes --quiet ../site
 
       - name: Deploy to GitHub Pages
-        run: go run main.go --deploy --no-rebuild --yes --deployment-method github-pages --deploy-setting username=mbtestfeed ../site
+        run: go run main.go --deploy --no-rebuild --yes --quiet --deployment-method github-pages --deploy-setting username=mbtestfeed ../site
 
       - name: Deploy to Cloudflare Pages
         env:
           GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: go run main.go --deploy --no-rebuild --yes --deployment-method cloudflare-pages --deploy-setting account_id=${{ secrets.CLOUDFLARE_ACCOUNT_ID }} --deploy-setting project=gho-static --deploy-setting domain=gho-static.com ../site
+        run: go run main.go --deploy --no-rebuild --yes --quiet --deployment-method cloudflare-pages --deploy-setting account_id=${{ secrets.CLOUDFLARE_ACCOUNT_ID }} --deploy-setting project=gho-static --deploy-setting domain=gho-static.com ../site
