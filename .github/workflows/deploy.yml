@@ -49,7 +49,7 @@ jobs:
       # Built once, so both deploys have the same build version.
       - name: Build site
         run: |
-          go run main.go --generate --yes --quiet ../site
+          go run main.go --generate --yes --get-all-themes --quiet ../site
           go run main.go --publish --publish-with-themes --quiet ../site
 
       - name: Deploy to GitHub Pages
