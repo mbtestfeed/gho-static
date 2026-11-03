@@ -23,8 +23,17 @@ Gho-Static is intentionally simple. It's for making and deploying websites witho
 > [!NOTE]
 > There are no published binaries yet, so Gho-Static can't be installed this way. Run it from its source code instead (see below).
 
-1. Go to the [releases page](https://github.com/mbtestfeed/gho-static/releases) and download the binary for your operating system.
-2. On macOS or Linux, make it executable: `chmod +x gho-static`
+1. Go to the [releases page](https://github.com/mbtestfeed/gho-static/releases) and download the binary for your operating system:
+   - Linux: `gho-static-linux-amd64` for most PCs, or `gho-static-linux-arm64` for 64-bit ARM, such as a Raspberry Pi running a 64-bit OS.
+   - macOS: `gho-static-darwin-arm64` for Apple silicon (M1 and later), or `gho-static-darwin-amd64` for Intel Macs.
+   - Windows: see On Windows, below.
+2. Rename it to `gho-static` and make it executable, e.g. for Linux on a PC:
+
+   ```
+   mv gho-static-linux-amd64 gho-static
+   chmod +x gho-static
+   ```
+
 3. To run it from any folder as just `gho-static`, move it into a folder on your `PATH`. `~/.local/bin` works well, as it doesn't need admin rights:
 
    ```
@@ -42,8 +51,8 @@ Gho-Static is intentionally simple. It's for making and deploying websites witho
 
 #### On Windows
 
-1. Download the Windows binary (`gho-static.exe`) from the [releases page](https://github.com/mbtestfeed/gho-static/releases).
-2. Move it into a folder of its own, e.g. `C:\Tools\gho-static`.
+1. Download the Windows binary from the [releases page](https://github.com/mbtestfeed/gho-static/releases): `gho-static-windows-amd64.exe` for most PCs, or `gho-static-windows-arm64.exe` for ARM, such as a Surface Pro X or a Copilot+ PC with a Snapdragon processor.
+2. Move it into a folder of its own, e.g. `C:\Tools\gho-static`, and rename it to `gho-static.exe`.
 3. Open PowerShell or Windows Terminal in that folder and run it:
 
    ```
