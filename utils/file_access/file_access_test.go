@@ -81,6 +81,29 @@ func TestNewFolder(t *testing.T) {
 	}
 }
 
+func TestNewOrEmptyFolder(t *testing.T) {
+	dir := filepath.Join(makeTestDir(t, nil, nil), "parent", "child")
+	if err := NewOrEmptyFolder(dir); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("NewOrEmptyFolder(%q) didn't create the folder: %v", dir, err)
+	}
+	if err := NewOrEmptyFolder(dir); err != nil {
+		t.Errorf("NewOrEmptyFolder on an empty folder returned %v, want nil", err)
+	}
+	file := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(file, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewOrEmptyFolder(dir); !os.IsExist(err) {
+		t.Errorf("NewOrEmptyFolder on a folder with a file in it returned %v, want an os.IsExist error", err)
+	}
+	if err := NewOrEmptyFolder(file); !os.IsExist(err) {
+		t.Errorf("NewOrEmptyFolder on a file returned %v, want an os.IsExist error", err)
+	}
+}
+
 func TestWriteNewFile(t *testing.T) {
 	path := filepath.Join(makeTestDir(t, nil, nil), "a.txt")
 	if err := WriteNewFile(path, "first"); err != nil {

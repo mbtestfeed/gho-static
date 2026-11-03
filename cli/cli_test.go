@@ -175,10 +175,13 @@ func wantErr(t *testing.T, err error, want string) {
 }
 
 func TestResolveGenerateSite(t *testing.T) {
-	existing := t.TempDir()
+	existing, empty := t.TempDir(), t.TempDir()
+	writeFiles(t, existing, map[string]string{"notes.txt": ""})
+	file := filepath.Join(existing, "notes.txt")
 	cases := []struct {
 		name         string
 		args         []string
+		site         string // the folder to generate, or a new one if ""
 		input        string
 		interactive  bool
 		wantMethod   string
@@ -186,7 +189,9 @@ func TestResolveGenerateSite(t *testing.T) {
 		wantAsked    []string
 		wantErr      string
 	}{
-		{name: "existing folder", args: []string{"-gy", existing}, wantErr: "already exists"},
+		{name: "existing folder", args: []string{"-gy"}, site: existing, wantErr: "already exists, and isn't empty"},
+		{name: "existing file", args: []string{"-gy"}, site: file, wantErr: "already exists, and isn't a folder"},
+		{name: "empty folder is used", args: []string{"-gy"}, site: empty, wantMethod: "none"},
 		{name: "yes deploys nowhere", args: []string{"-gy"}, wantMethod: "none"},
 		{
 			name: "asks for the method and its settings", args: []string{"-g"}, input: "1\nme\n", interactive: true,
@@ -205,12 +210,11 @@ func TestResolveGenerateSite(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			args := c.args
-			// Each new site goes in a folder of its own.
-			if c.wantErr == "" || !strings.Contains(c.wantErr, "exists") {
-				args = append(args, filepath.Join(t.TempDir(), "mysite"))
+			site := c.site
+			if site == "" {
+				site = filepath.Join(t.TempDir(), "mysite")
 			}
-			cmd, out, err := resolve(t, args, c.input, c.interactive)
+			cmd, out, err := resolve(t, append(c.args, site), c.input, c.interactive)
 			wantErr(t, err, c.wantErr)
 			if c.wantErr != "" {
 				return
@@ -327,6 +331,26 @@ func TestResolveGeneratePageAndPost(t *testing.T) {
 			if cmd.NavLink != c.wantNavLink {
 				t.Errorf("NavLink = %q, want %q", cmd.NavLink, c.wantNavLink)
 			}
+		})
+	}
+}
+
+func TestResolveBuild(t *testing.T) {
+	empty, site := t.TempDir(), t.TempDir()
+	writeFiles(t, site, map[string]string{"index.html": ""})
+	cases := []struct {
+		name    string
+		site    string
+		wantErr string
+	}{
+		{name: "missing folder", site: filepath.Join(t.TempDir(), "missing"), wantErr: "doesn't exist. If it's a new site, create it first with `gho-static --generate"},
+		{name: "folder without index.html", site: empty, wantErr: "has no index.html. If it's a new site, create it first with `gho-static --generate"},
+		{name: "site", site: site},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, err := resolve(t, []string{c.site}, "", false)
+			wantErr(t, err, c.wantErr)
 		})
 	}
 }

@@ -23,7 +23,8 @@ Flags:
   -h, --help, -u, --usage Print this usage text and exit.
   -g, --generate <path>   Create a new folder at <path>, fill it with a default
                           starter site and build it into <path>/build. Fails if
-                          <path> already exists. If <path> is content/<name>,
+                          <path> already exists, unless it's an empty folder.
+                          If <path> is content/<name>,
                           instead adds a draft page <name>.md in a new
                           content/<name> folder inside <site folder>. If <path>
                           is content/<name>/<post>, adds a draft post.md in a
@@ -352,6 +353,14 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 	}
 
 	switch cmd.Mode {
+	case Build:
+		// A site needs at least its page layout to build.
+		if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
+			return cmd, fmt.Errorf("site folder %s doesn't exist. If it's a new site, create it first with `gho-static --generate %s`.", cmd.Site, cmd.Site)
+		}
+		if _, err := os.Stat(filepath.Join(cmd.Site, "index.html")); err != nil {
+			return cmd, fmt.Errorf("%s isn't a Gho-Static site, as it has no index.html. If it's a new site, create it first with `gho-static --generate %s`.", cmd.Site, cmd.Site)
+		}
 	case Deploy, SetupDeployment:
 		// The method saved in settings.yaml is used unless one is given,
 		// along with its saved settings. Sites set up before they were saved
@@ -395,9 +404,12 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 			return cmd, err
 		}
 	case GenerateSite:
-		// Check before prompting so the answers aren't wasted.
-		if _, err := os.Stat(cmd.GenPath); err == nil {
-			return cmd, fmt.Errorf("%s already exists", cmd.GenPath)
+		// Check before prompting so the answers aren't wasted. An empty
+		// folder is generated into as it is.
+		if entries, err := os.ReadDir(cmd.GenPath); err == nil && len(entries) > 0 {
+			return cmd, fmt.Errorf("%s already exists, and isn't empty", cmd.GenPath)
+		} else if info, err := os.Stat(cmd.GenPath); err == nil && !info.IsDir() {
+			return cmd, fmt.Errorf("%s already exists, and isn't a folder", cmd.GenPath)
 		}
 		if err := chooseMethod(!cmd.Yes); err != nil {
 			return cmd, err
