@@ -246,6 +246,14 @@ func TestGenerate(t *testing.T) {
 	if err := Generate(dir, gho_static.DefaultPreferences, testImages(), testThemes(), "", true); !os.IsExist(err) {
 		t.Errorf("generating into an existing folder = %v, want an os.IsExist error", err)
 	}
+
+	empty := t.TempDir()
+	if err := Generate(empty, gho_static.DefaultPreferences, testImages(), testThemes(), "", true); err != nil {
+		t.Fatalf("generating into an empty folder failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(empty, "index.html")); err != nil {
+		t.Errorf("the site wasn't generated in the empty folder: %v", err)
+	}
 }
 
 func TestGenerateBadImages(t *testing.T) {

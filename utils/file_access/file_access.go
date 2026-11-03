@@ -38,6 +38,16 @@ func NewFolder(dir string) error {
 	return os.Mkdir(dir, 0755)
 }
 
+// NewOrEmptyFolder creates dir as NewFolder does, or uses dir as it is if
+// it's an existing empty folder, returning an os.IsExist error if dir
+// already exists with anything in it.
+func NewOrEmptyFolder(dir string) error {
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) == 0 {
+		return nil
+	}
+	return NewFolder(dir)
+}
+
 // WriteNewFile writes content to path, refusing to overwrite an existing file.
 func WriteNewFile(path, content string) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)

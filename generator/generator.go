@@ -187,7 +187,8 @@ func addGallery(files map[string]string) {
 }
 
 // Generate writes a starter site with the given preferences into dir, with
-// images copied into static/img, refusing to overwrite existing files.
+// images copied into static/img. dir is created, unless it's an existing
+// empty folder; any other existing dir is an os.IsExist error.
 // themes holds a themes folder laid out as in a site: its default theme and
 // custom themes readme are copied, and its other themes listed in the themes
 // showcase. A logo or favicon other than the default is
@@ -223,7 +224,7 @@ func Generate(dir string, prefs gho_static.Preferences, images, themes fs.FS, re
 		return err
 	}
 	maps.Copy(files, custom)
-	if err := file_access.NewFolder(dir); err != nil {
+	if err := file_access.NewOrEmptyFolder(dir); err != nil {
 		return err
 	}
 	return file_access.WriteFiles(dir, files)
