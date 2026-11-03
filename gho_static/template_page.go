@@ -18,17 +18,17 @@ import (
 
 // SubPage links to a markdown page in a subfolder of a template page's folder.
 type SubPage struct {
-	Title     string
-	Link      string // relative to the build folder
-	Published  string // yyyy/mm/dd, or empty if unset
-	Draft      bool
-	Unreleased bool // published date is still in the future
-	Summary    string // front matter summary, truncated to 200 characters
+	Title       string
+	Link        string // relative to the build folder
+	Published   string // yyyy/mm/dd, or empty if unset
+	Draft       bool
+	Unreleased  bool   // published date is still in the future
+	Summary     string // front matter summary, truncated to 200 characters
 	Tags        []Tag  // the page's tags, without their Pages
 	HeaderImage string // the first of the page folder's images, or empty if none
 	Collection  string // the listing page's folder name, capitalised with underscores as spaces
 	Theme       string // the theme the page is styled with, if its front matter sets one
-	published  time.Time
+	published   time.Time
 }
 
 // summaryLength is the most characters of a page's summary shown in links

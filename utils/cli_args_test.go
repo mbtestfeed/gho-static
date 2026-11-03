@@ -28,10 +28,10 @@ func equalStrings(a, b []string) bool {
 
 func TestParseArgs(t *testing.T) {
 	cases := []struct {
-		name       string
-		argv       []string
-		wantFlags  []Arg
-		wantPos    []string
+		name      string
+		argv      []string
+		wantFlags []Arg
+		wantPos   []string
 	}{
 		{
 			name:      "single dash combined flags",

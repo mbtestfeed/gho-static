@@ -184,8 +184,8 @@ func (None) Setup(string) error { return nil }
 func (None) CheckPush() error {
 	return errors.New("no deployment method is set up, so there's nothing to deploy to")
 }
-func (n None) Push(string) error  { return n.CheckPush() }
-func (None) Settings() Settings { return nil }
+func (n None) Push(string) error { return n.CheckPush() }
+func (None) Settings() Settings  { return nil }
 
 // Deploy checks everything d needs is in place, builds site for publishing
 // with opts into its build folder and deploys it, returning the build

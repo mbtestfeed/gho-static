@@ -209,24 +209,17 @@ func (ls loadedSite) layout(version string) (Page, error) {
 	return layout, nil
 }
 
-// write clears outDir/build, keeping any git repo, and builds ls into it
-// with layout.
+// write builds ls with layout into a temporary folder in outDir, then
+// replaces outDir/build with it, keeping any git repo, so a failed build
+// leaves the previous one as it was.
 func (ls loadedSite) write(outDir string, layout Page) error {
 	content := ls.content
-	// Clear the previous build, keeping any git repo it was published from.
-	buildDir := filepath.Join(outDir, "build")
-	entries, err := os.ReadDir(buildDir)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read %s: %w", buildDir, err)
+	finalDir := filepath.Join(outDir, "build")
+	buildDir, err := os.MkdirTemp(outDir, ".build-")
+	if err != nil {
+		return fmt.Errorf("failed to create a temporary build folder: %w", err)
 	}
-	for _, e := range entries {
-		if e.Name() == ".git" {
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(buildDir, e.Name())); err != nil {
-			return fmt.Errorf("failed to remove %s: %w", e.Name(), err)
-		}
-	}
+	defer os.RemoveAll(buildDir)
 	if err := os.MkdirAll(filepath.Join(buildDir, "static"), 0755); err != nil {
 		return fmt.Errorf("failed to create %s: %w", buildDir, err)
 	}
@@ -279,7 +272,7 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 		}
 	}
 
-	if err := writeMarkdownPage(ls.tmpl, layout, ls.index, filepath.Join(buildDir, "index.html"), "", shared[ls.prefs.Theme]); err != nil {
+	if err := writeMarkdownPage(ls.tmpl, layout, ls.index, filepath.Join(buildDir, "index.html"), "", shared[ls.prefs.Theme], ls.links(".", layout.Root)); err != nil {
 		return err
 	}
 	// 404.html at the build's root is served for missing pages by Cloudflare
@@ -292,7 +285,7 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 		Meta: FrontMatter{Title: "Page not found"},
 		Body: []byte("# Page not found\n\nThere's no page at this address. [Go to the home page](" + notFound.Root + layout.Site.Home + ")\n"),
 	}
-	if err := writeMarkdownPage(ls.tmpl, notFound, notFoundPage, filepath.Join(buildDir, "404.html"), "", shared[ls.prefs.Theme]); err != nil {
+	if err := writeMarkdownPage(ls.tmpl, notFound, notFoundPage, filepath.Join(buildDir, "404.html"), "", shared[ls.prefs.Theme], nil); err != nil {
 		return err
 	}
 
@@ -300,7 +293,38 @@ func (ls loadedSite) write(outDir string, layout Page) error {
 	if err != nil {
 		return err
 	}
-	return ls.writeContent(plan, buildDir)
+	if err := ls.writeContent(plan, buildDir); err != nil {
+		return err
+	}
+	ls.warnBrokenLinks(plan, buildDir)
+
+	// Clear the previous build, keeping any git repo it was published from,
+	// and move the new one in.
+	entries, err := os.ReadDir(finalDir)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read %s: %w", finalDir, err)
+	}
+	for _, e := range entries {
+		if e.Name() == ".git" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(finalDir, e.Name())); err != nil {
+			return fmt.Errorf("failed to remove %s: %w", e.Name(), err)
+		}
+	}
+	if err := os.MkdirAll(finalDir, 0755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", finalDir, err)
+	}
+	built, err := os.ReadDir(buildDir)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", buildDir, err)
+	}
+	for _, e := range built {
+		if err := os.Rename(filepath.Join(buildDir, e.Name()), filepath.Join(finalDir, e.Name())); err != nil {
+			return fmt.Errorf("failed to move %s into %s: %w", e.Name(), finalDir, err)
+		}
+	}
+	return nil
 }
 
 // structureParts are the structure templates' folders, each named after its
@@ -480,7 +504,7 @@ func (ls loadedSite) planContent(layout Page, shared map[string][]string) (conte
 				p.page.SubPages = listing
 				if intro, ok := ls.md[stem+".md"]; ok {
 					p.page.Meta = intro.Meta
-					p.page.Intro = template.HTML(mdToHTML(intro.Body, p.page.Root, rel))
+					p.page.Intro = template.HTML(mdToHTML(intro.Body, p.page.Root, rel, ls.links(dir.Path, p.page.Root)))
 				}
 			}
 			plan.pages = append(plan.pages, p)
@@ -499,6 +523,133 @@ func (ls loadedSite) planContent(layout Page, shared map[string][]string) (conte
 	return plan, err
 }
 
+// links returns a function pointing the destination of a markdown link, on
+// a page whose markdown is in the folder dir (slash separated, within the
+// source folder) and whose path to the build folder is root, at the built
+// page it's to. The destination is relative to dir, or to the content folder
+// if it starts with "/", and is to a page if it's to a folder (the page
+// named after it, or its only page), the folder's index.html, or a page's
+// .md or .html file. When publishing, the page is linked from the site's
+// root, e.g. /about, otherwise relative to root, e.g. ../about/about.html.
+// It returns "" for a destination outside the site folder, so it's removed
+// (see mdToHTML). Other links are left as they are.
+func (ls loadedSite) links(dir, root string) func(string) string {
+	content := ls.content.Path
+	return func(dest string) string {
+		p, suffix, ok := splitLink(dest)
+		if !ok {
+			return dest
+		}
+		// Links outside the site folder are removed (see warnBrokenLinks).
+		if escapes(content, dir, p) {
+			return ""
+		}
+		if strings.HasPrefix(p, "/") {
+			p = path.Join(content, p)
+		} else if joined := path.Join(dir, p); dir == "." && joined != content && !strings.HasPrefix(joined, content+"/") {
+			// The home page is outside the content folder, so its links can
+			// be from either.
+			p = path.Join(content, p)
+		} else {
+			p = joined
+		}
+		stem := ""
+		if utils.HasExt(p, ".md", ".html") {
+			stem = strings.TrimSuffix(path.Base(p), path.Ext(p))
+			p = path.Dir(p)
+			if strings.EqualFold(stem, "index") {
+				stem = ""
+			}
+		}
+		if p == content && stem == "" {
+			if ls.opts.Publish {
+				return "/" + suffix
+			}
+			return root + "index.html" + suffix
+		}
+		if !strings.HasPrefix(p, content+"/") {
+			return dest
+		}
+		entries, err := fs.ReadDir(ls, p)
+		if err != nil {
+			return dest
+		}
+		// A template page and its markdown intro share a name, and are one page.
+		pages := map[string]string{}
+		for _, e := range entries {
+			if !e.IsDir() && utils.HasExt(e.Name(), ".md", ".html") {
+				pages[strings.TrimSuffix(e.Name(), path.Ext(e.Name()))] = path.Join(p, e.Name())
+			}
+		}
+		if stem == "" {
+			stem = path.Base(p)
+			if len(pages) == 1 {
+				for name := range pages {
+					stem = name
+				}
+			}
+		}
+		src, ok := pages[stem]
+		if !ok {
+			return dest
+		}
+		_, link, err := ls.pagePath(src, content, ls.opts.Publish)
+		if err != nil {
+			return dest
+		}
+		if ls.opts.Publish {
+			return "/" + strings.TrimSuffix(link, "/") + suffix
+		}
+		return root + link + suffix
+	}
+}
+
+// warnBrokenLinks writes a warning for each link, in the home page's or a
+// built page's markdown, to a file within the site that isn't in buildDir
+// once pointed at its page (see links), as when it's to a page left out of
+// the build. A link to a folder is to its index.html.
+func (ls loadedSite) warnBrokenLinks(plan contentPlan, buildDir string) {
+	check := func(src, dir, file string, md []byte) {
+		toPage := ls.links(dir, rootFor(file))
+		links, images := localLinks(md)
+		for _, dest := range slices.Concat(links, images) {
+			if p, _, _ := splitLink(dest); escapes(ls.content.Path, dir, p) {
+				ls.opts.Output.Warnf("%s links to %s, which is outside the site folder, so it was removed: all content must be within the site folder", src, dest)
+			}
+		}
+		for _, link := range links {
+			if p, _, _ := splitLink(link); escapes(ls.content.Path, dir, p) {
+				continue
+			}
+			p, _, ok := splitLink(toPage(link))
+			if !ok {
+				continue
+			}
+			target := filepath.Join(buildDir, filepath.FromSlash(path.Join(path.Dir(file), p)))
+			if strings.HasPrefix(p, "/") {
+				target = filepath.Join(buildDir, filepath.FromSlash(p))
+			}
+			if info, err := os.Stat(target); err == nil && info.IsDir() {
+				target = filepath.Join(target, "index.html")
+			}
+			if _, err := os.Stat(target); err != nil {
+				ls.opts.Output.Warnf("%s links to %s, which isn't in the build (it may be a draft, unreleased, left out or missing), so the link won't work", src, link)
+			}
+		}
+	}
+	check("index.md", ".", "index.html", ls.index.Body)
+	for _, p := range plan.pages {
+		// Each tag's page is the tags page again, so its links were checked.
+		if p.page.Tag != nil {
+			continue
+		}
+		// A template page's links are in its markdown intro.
+		if md, ok := ls.md[strings.TrimSuffix(p.src, path.Ext(p.src))+".md"]; ok {
+			check(p.src, path.Dir(p.src), p.file, md.Body)
+		}
+	}
+}
+
 // writeContent writes plan's static files and pages into buildDir, then
 // removes the mirrored folders of each folder it left out, if nothing else
 // was built in them.
@@ -515,7 +666,7 @@ func (ls loadedSite) writeContent(plan contentPlan, buildDir string) error {
 		}
 		var err error
 		if p.markdown != nil {
-			err = writeMarkdownPage(ls.tmpl, p.page, *p.markdown, out, p.imgDir, p.assets)
+			err = writeMarkdownPage(ls.tmpl, p.page, *p.markdown, out, p.imgDir, p.assets, ls.links(path.Dir(p.src), p.page.Root))
 		} else {
 			err = ls.writeTemplatePage(ls.tmpl, p.page, p.src, out, p.assets)
 		}

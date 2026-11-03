@@ -231,6 +231,8 @@ The body is standard markdown, with tables, fenced code blocks, footnotes and st
 
 To include an image in a page or post, put it in the same folder as its markdown file in `content/`, then link to it from the markdown with `![picture caption](./my-image.png)`.
 
+To link to another page, link to its folder or its markdown file, either relative to the page's folder or from `content/` with a leading `/`, e.g. `[About](/about)` or `[About](../about/about.md)`. Links are pointed at the right built page for each kind of build, and a warning is shown for any link to a page that isn't built.
+
 ### Blog posts and listings
 
 A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing page: it lists each of its subfolders' posts, newest first, after an intro from the markdown file in the same folder. Post folders are named `YYYYMMDD_<name>`, each with a `post.md` inside. Posts in the same listing get previous and next links.

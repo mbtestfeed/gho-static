@@ -7,6 +7,7 @@ import (
 	"html"
 	"html/template"
 	"io/fs"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -25,7 +26,7 @@ import (
 )
 
 type NavLink struct {
-	Name string
+	Name       string
 	Link       string // relative to the build folder
 	Draft      bool
 	Unreleased bool
@@ -72,24 +73,24 @@ func newVersion() string {
 
 // Page is the data index.html and the structure templates are executed with.
 type Page struct {
-	Site    *Site
-	Root    string // relative path from the page to the build folder
-	Meta     FrontMatter
-	Header   template.HTML
-	Content  template.HTML
-	Footer   template.HTML
-	IntroSidebar template.HTML // empty if the site has no intro sidebar template
+	Site           *Site
+	Root           string // relative path from the page to the build folder
+	Meta           FrontMatter
+	Header         template.HTML
+	Content        template.HTML
+	Footer         template.HTML
+	IntroSidebar   template.HTML // empty if the site has no intro sidebar template
 	RecentActivity template.HTML // empty if the site has no recent activity template
-	Styles   []string // linked in the head
-	DeferredStyles []string // linked at the end of the body, so they don't hold up the page being drawn
-	Scripts  []string
-	SubPages []SubPage // only set for content .html templates
-	Intro    template.HTML // a content .html template's markdown intro, from the .md file named like it
-	Previous *SubPage  // older sibling, for markdown pages listed by a template page
-	Next     *SubPage  // newer sibling, for markdown pages listed by a template page
-	Tags     []Tag     // every tag on the site's built pages
-	Tag      *Tag      // only set when the tags template page is rendered as this tag's page
-	Images   []string  // only set for gallery pages: their folder's images, relative to the build folder
+	Styles         []string      // linked in the head
+	DeferredStyles []string      // linked at the end of the body, so they don't hold up the page being drawn
+	Scripts        []string
+	SubPages       []SubPage     // only set for content .html templates
+	Intro          template.HTML // a content .html template's markdown intro, from the .md file named like it
+	Previous       *SubPage      // older sibling, for markdown pages listed by a template page
+	Next           *SubPage      // newer sibling, for markdown pages listed by a template page
+	Tags           []Tag         // every tag on the site's built pages
+	Tag            *Tag          // only set when the tags template page is rendered as this tag's page
+	Images         []string      // only set for gallery pages: their folder's images, relative to the build folder
 }
 
 // ThemePage returns the sub-page using theme, as set in its front matter,
@@ -113,7 +114,7 @@ const (
 
 var assetExts = []string{".css", ".js"}
 
-var ImageExts =[]string{".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico"}
+var ImageExts = []string{".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico"}
 
 // tocMarker, on a line of its own in a page's markdown, is replaced with a
 // table of contents. GitHub hides it, as it's an HTML comment.
@@ -179,16 +180,117 @@ func tocList(entries []*tocEntry) string {
 	return sb.String()
 }
 
+// mdExtensions are the markdown parser's extensions. CommonExtensions already
+// includes tables, fenced code, autolinks and strikethrough; footnotes and
+// heading IDs generated from their text are added to them.
+const mdExtensions = parser.CommonExtensions | parser.Footnotes | parser.AutoHeadingIDs
+
+// splitLink splits a link's destination into its path, unescaped, and any
+// query or fragment after it. ok is false if it isn't to a file within the
+// site: it has a scheme (https:, mailto: and so on) or no path.
+func splitLink(dest string) (p, suffix string, ok bool) {
+	p = dest
+	if i := strings.IndexAny(dest, "?#"); i != -1 {
+		p, suffix = dest[:i], dest[i:]
+	}
+	if p == "" || strings.Contains(p, ":") {
+		return "", "", false
+	}
+	if unescaped, err := url.PathUnescape(p); err == nil {
+		p = unescaped
+	}
+	return p, suffix, true
+}
+
+// escapes reports whether the link path p (from splitLink), relative to the
+// folder dir (slash separated, within the site folder), or to the content
+// folder content if it starts with "/", is outside the site folder.
+func escapes(content, dir, p string) bool {
+	if strings.HasPrefix(p, "/") {
+		dir = content
+	}
+	joined := path.Join(dir, p)
+	return joined == ".." || strings.HasPrefix(joined, "../")
+}
+
+// localLinks returns the destinations of md's links, and of its images,
+// within the site, as written.
+func localLinks(md []byte) (links, images []string) {
+	ast.WalkFunc(markdown.Parse(md, parser.NewWithExtensions(mdExtensions)), func(node ast.Node, entering bool) ast.WalkStatus {
+		if !entering {
+			return ast.GoToNext
+		}
+		switch n := node.(type) {
+		case *ast.Link:
+			if _, _, ok := splitLink(string(n.Destination)); ok && n.NoteID == 0 {
+				links = append(links, string(n.Destination))
+			}
+		case *ast.Image:
+			if _, _, ok := splitLink(string(n.Destination)); ok {
+				images = append(images, string(n.Destination))
+			}
+		}
+		return ast.GoToNext
+	})
+	return links, images
+}
+
+// replaceNode replaces n, in its parent's children, with with.
+func replaceNode(n ast.Node, with []ast.Node) {
+	parent := n.GetParent()
+	var children []ast.Node
+	for _, c := range parent.GetChildren() {
+		if c != n {
+			children = append(children, c)
+			continue
+		}
+		for _, w := range with {
+			w.SetParent(parent)
+		}
+		children = append(children, with...)
+	}
+	parent.SetChildren(children)
+}
+
 // mdToHTML converts md to HTML, with a table of contents of the headings
 // after its first tocMarker in its place. If imgDir is set, local image
 // links are pointed at their copies under static/imgDir, relative to the
-// page via prefix.
-func mdToHTML(md []byte, prefix, imgDir string) []byte {
-	// CommonExtensions already includes tables, fenced code, autolinks and
-	// strikethrough; footnotes and heading IDs generated from their text are
-	// added to them.
-	doc := markdown.Parse(md, parser.NewWithExtensions(parser.CommonExtensions|parser.Footnotes|parser.AutoHeadingIDs))
+// page via prefix. If link is set, each link's destination is replaced with
+// what it returns for it, and links and images it returns "" for are
+// removed, keeping a link's text.
+func mdToHTML(md []byte, prefix, imgDir string, link func(string) string) []byte {
+	doc := markdown.Parse(md, parser.NewWithExtensions(mdExtensions))
 	entries, toc := tocEntries(doc)
+	if link != nil {
+		var removed []ast.Node
+		ast.WalkFunc(doc, func(node ast.Node, entering bool) ast.WalkStatus {
+			if !entering {
+				return ast.GoToNext
+			}
+			switch n := node.(type) {
+			case *ast.Link:
+				if dest := string(n.Destination); dest != "" && n.NoteID == 0 {
+					if n.Destination = []byte(link(dest)); len(n.Destination) == 0 {
+						removed = append(removed, n)
+					}
+				}
+			case *ast.Image:
+				if dest := string(n.Destination); dest != "" && link(dest) == "" {
+					removed = append(removed, n)
+				}
+			}
+			return ast.GoToNext
+		})
+		// Removed after walking, so the walk isn't disturbed. A link is
+		// replaced by its text, and an image dropped with its alt text.
+		for _, n := range removed {
+			var with []ast.Node
+			if _, ok := n.(*ast.Link); ok {
+				with = n.GetChildren()
+			}
+			replaceNode(n, with)
+		}
+	}
 	if imgDir != "" {
 		ast.WalkFunc(doc, func(node ast.Node, entering bool) ast.WalkStatus {
 			img, ok := node.(*ast.Image)
@@ -294,10 +396,10 @@ func readSource(fsys fs.FS, content *file_access.ContentDir, now time.Time) (sou
 }
 
 // writeMarkdownPage converts f into page's content and writes it with
-// writePage. See mdToHTML for imgDir.
-func writeMarkdownPage(tmpl *template.Template, page Page, f mdFile, out, imgDir string, assets []string) error {
+// writePage. See mdToHTML for imgDir and link.
+func writeMarkdownPage(tmpl *template.Template, page Page, f mdFile, out, imgDir string, assets []string, link func(string) string) error {
 	page.Meta = f.Meta
-	page.Content = toDiv(mdToHTML(f.Body, page.Root, imgDir))
+	page.Content = toDiv(mdToHTML(f.Body, page.Root, imgDir, link))
 	return writePage(tmpl, page, out, assets)
 }
 

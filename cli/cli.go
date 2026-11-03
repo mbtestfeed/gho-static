@@ -33,7 +33,7 @@ Flags:
                           site's currently selected theme into a new custom
                           theme in theme_templates/custom_themes/<name>.
                           Builds afterwards.
-  -c, --clean            With -g, generate markdown files with only their front
+  -c, --clean             With -g, generate markdown files with only their front
                           matter. A new site is named after its folder, with
                           one empty post instead of the example posts, and no
                           intro sidebar image, name or links.
@@ -78,19 +78,22 @@ Flags:
                           Can be given more than once. Secret settings, such
                           as API keys, are never saved: give them with this,
                           in a GHO_STATIC_<METHOD>_<SETTING> environment
-                          variable (e.g. GHO_STATIC_NETLIFY_TOKEN), or when
+                          variable (e.g. GHO_STATIC_CLOUDFLARE_PAGES_API_TOKEN), or when
                           asked.
   --use-theme <name>      Switch <site folder> to the theme <name>, setting
                           theme in settings.yaml, and rebuild it. Downloads
                           the theme from the Gho-Static GitHub repo into
-                          <site folder>/themes first if it isn't there.
+                          <site folder>/theme_templates/gho_static_themes
+                          first if the site doesn't have it.
   --get-all-themes        Download every theme in the Gho-Static GitHub repo
-                          into <site folder>/themes, replacing any already
-                          there. Can also be used with -g, to download them
+                          into <site folder>/theme_templates/gho_static_themes,
+                          replacing any already there. Custom themes are left
+                          alone. Can also be used with -g, to download them
                           into the new site.
   --list-themes           List the themes in the Gho-Static GitHub repo and in
-                          <site folder>/themes, marking which are downloaded
-                          and which one the site uses.
+                          <site folder>/theme_templates, marking which are
+                          downloaded, which are custom, and which one the
+                          site uses.
 
 Single-letter flags can be combined, e.g. -cy.
 `
@@ -103,35 +106,35 @@ var ErrMissingPath = errors.New("no site folder was given. Add the path to one a
 type Mode int
 
 const (
-	Build        Mode = iota // build Site
-	GenerateSite             // create a starter site at GenPath with Prefs, then build it
-	GeneratePage             // create a draft page at GenPath in Site, then build Site
-	GeneratePost             // create a draft post PostName at GenPath in Site, then build Site
-	SetupDeployment          // set up Site's build folder for Method, building it if missing
-	Deploy                   // build Site for publishing and deploy it with Method
-	PublishDrafts            // ask whether to publish each of Site's draft pages
-	UseTheme                 // switch Site to Theme, downloading it if missing, then build Site
-	GetAllThemes             // download every theme into Site's themes folder
-	ListThemes               // list the themes that can be downloaded, and Site's own
-	Help                     // print Usage, and do nothing else
-	GenerateTheme            // copy Site's current theme into a new custom theme Theme at GenPath, then build Site
+	Build           Mode = iota // build Site
+	GenerateSite                // create a starter site at GenPath with Prefs, then build it
+	GeneratePage                // create a draft page at GenPath in Site, then build Site
+	GeneratePost                // create a draft post PostName at GenPath in Site, then build Site
+	SetupDeployment             // set up Site's build folder for Method, building it if missing
+	Deploy                      // build Site for publishing and deploy it with Method
+	PublishDrafts               // ask whether to publish each of Site's draft pages
+	UseTheme                    // switch Site to Theme, downloading it if missing, then build Site
+	GetAllThemes                // download every theme into Site's themes folder
+	ListThemes                  // list the themes that can be downloaded, and Site's own
+	Help                        // print Usage, and do nothing else
+	GenerateTheme               // copy Site's current theme into a new custom theme Theme at GenPath, then build Site
 )
 
 // Command is the work requested on the command line.
 type Command struct {
-	Mode     Mode
-	Site     string // site folder to build; unset for GenerateSite
-	GenPath  string // folder to generate
-	PostName string // only set for GeneratePost
-	Theme    string // only set for UseTheme and GenerateTheme
-	AllThemes bool  // with GenerateSite, also download every theme into the new site (--get-all-themes)
-	NavLink  string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
-	Yes      bool   // answer yes to every question (--yes)
-	Clean    bool   // generate without example content (--clean)
-	Quiet    bool   // write only warnings, errors and success messages (--quiet)
-	Options  gho_static.Options
-	Prefs    gho_static.Preferences // only set for GenerateSite
-	Deployer deployment.Deployer    // only set for GenerateSite, SetupDeployment and Deploy
+	Mode      Mode
+	Site      string // site folder to build; unset for GenerateSite
+	GenPath   string // folder to generate
+	PostName  string // only set for GeneratePost
+	Theme     string // only set for UseTheme and GenerateTheme
+	AllThemes bool   // with GenerateSite, also download every theme into the new site (--get-all-themes)
+	NavLink   string // content folder to add to nav_links, only set for GeneratePage and GeneratePost
+	Yes       bool   // answer yes to every question (--yes)
+	Clean     bool   // generate without example content (--clean)
+	Quiet     bool   // write only warnings, errors and success messages (--quiet)
+	Options   gho_static.Options
+	Prefs     gho_static.Preferences // only set for GenerateSite
+	Deployer  deployment.Deployer    // only set for GenerateSite, SetupDeployment and Deploy
 	// Deployer's method and settings, to save in settings.yaml
 	Deployment gho_static.Deployment
 

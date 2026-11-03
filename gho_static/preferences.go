@@ -25,19 +25,19 @@ type Color struct {
 
 // Preferences are the site wide settings read from settings.yaml.
 type Preferences struct {
-	SiteName        string `yaml:"site_name"`
-	NavLinks        []string `yaml:"nav_links"` // content folder names, in menu order
-	Theme           string `yaml:"theme"`   // folder in CustomThemesDir or GhoStaticThemesDir holding the site's css and theme preferences
-	Logo            string `yaml:"logo"`    // header image, relative to the site folder
-	Favicon         string `yaml:"favicon"` // browser tab icon, relative to the site folder
-	DefaultAuthor   string `yaml:"default_author"` // added to new markdown pages' front matter, if set
-	ShowIntroSidebar       bool   `yaml:"show_intro_sidebar"`
-	RecentSidebarCollections []string `yaml:"collections_displayed_in_recent_sidebar"` // content folder names whose posts the recent activity sidebar lists; empty hides it
-	IntroSidebarImage      string `yaml:"intro_sidebar_image"` // intro sidebar image, relative to the site folder
-	IntroName        string      `yaml:"intro_name"`        // intro sidebar heading
-	IntroDescription string      `yaml:"intro_description"` // intro sidebar text
-	SocialLinks      SocialLinks `yaml:"social_links"`      // intro sidebar links, as name: url pairs; blank ones aren't shown
-	Deployment       Deployment  `yaml:"deployment,omitempty"` // how the build folder is published, saved once it's set up
+	SiteName                 string      `yaml:"site_name"`
+	NavLinks                 []string    `yaml:"nav_links"`      // content folder names, in menu order
+	Theme                    string      `yaml:"theme"`          // folder in CustomThemesDir or GhoStaticThemesDir holding the site's css and theme preferences
+	Logo                     string      `yaml:"logo"`           // header image, relative to the site folder
+	Favicon                  string      `yaml:"favicon"`        // browser tab icon, relative to the site folder
+	DefaultAuthor            string      `yaml:"default_author"` // added to new markdown pages' front matter, if set
+	ShowIntroSidebar         bool        `yaml:"show_intro_sidebar"`
+	RecentSidebarCollections []string    `yaml:"collections_displayed_in_recent_sidebar"` // content folder names whose posts the recent activity sidebar lists; empty hides it
+	IntroSidebarImage        string      `yaml:"intro_sidebar_image"`                     // intro sidebar image, relative to the site folder
+	IntroName                string      `yaml:"intro_name"`                              // intro sidebar heading
+	IntroDescription         string      `yaml:"intro_description"`                       // intro sidebar text
+	SocialLinks              SocialLinks `yaml:"social_links"`                            // intro sidebar links, as name: url pairs; blank ones aren't shown
+	Deployment               Deployment  `yaml:"deployment,omitempty"`                    // how the build folder is published, saved once it's set up
 }
 
 // ThemePreferences are a theme's colours and font, read from its
@@ -168,16 +168,16 @@ var DefaultThemePreferences = ThemePreferences{
 
 // DefaultPreferences are used for any setting missing from settings.yaml.
 var DefaultPreferences = Preferences{
-	SiteName:        "Gho-Static",
-	NavLinks:        []string{"about", "blogs", "gallery", "contact"},
-	Theme:           "default_developer_ugly",
-	Logo:            "static/img/gho_stephanie_64x64.svg",
-	Favicon:         "static/img/favicon.ico",
-	ShowIntroSidebar:       true,
+	SiteName:                 "Gho-Static",
+	NavLinks:                 []string{"about", "blogs", "gallery", "contact"},
+	Theme:                    "default_developer_ugly",
+	Logo:                     "static/img/gho_stephanie_64x64.svg",
+	Favicon:                  "static/img/favicon.ico",
+	ShowIntroSidebar:         true,
 	RecentSidebarCollections: []string{"gallery", "blogs"},
-	IntroSidebarImage:      "static/img/gho_stephanie_64x64.svg",
-	IntroName:        "Gho-Static",
-	IntroDescription: "A simple static site generator, designed to make deploying easy",
+	IntroSidebarImage:        "static/img/gho_stephanie_64x64.svg",
+	IntroName:                "Gho-Static",
+	IntroDescription:         "A simple static site generator, designed to make deploying easy",
 	SocialLinks: SocialLinks{
 		{Name: "github", URL: "github.com/mbtestfeed/gho-static"},
 		{Name: "linkedin"},
