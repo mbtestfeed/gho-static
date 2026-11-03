@@ -24,13 +24,14 @@ func testSite(t *testing.T) string {
 	files := map[string]string{
 		"settings.yaml":                "nav_links: [about, blogs]\nshow_intro_sidebar: false\ncollections_displayed_in_recent_sidebar: []\n",
 		"index.html":                   "<html>{{.Header}}{{.Content}}{{.Footer}}</html>\n",
-		"index.md":                     "---\ntitle: Home\n---\n\n[About](./about) [About again](./content/about/about.md)\n",
+		"index.md":                     "---\ntitle: Home\n---\n\n[About](./about) [About again](./content/about/about.md) [About from above](../content/about)\n",
 		"structure/header/header.html": "<header></header>\n",
 		"structure/footer/footer.html": "<footer></footer>\n",
 		"content/about/about.md": "---\ntitle: About\n---\n\n" +
-			"[Blog](/blogs) [Post](../blogs/20260101_first/post.md#top) [Draft](/drafty) [Missing](../nope) [Outside page](../../../outside.md)\n\n" +
+			"[Blog](/blogs) [Post](../blogs/20260101_first/post.md#top) [Draft](/drafty) [Missing](../nope) [Outside page](../../../outside.md) [Spaced](../our%20team)\n\n" +
 			"![pic](./pic.png)\n",
 		"content/about/pic.png":                "png",
+		"content/our team/our team.md":         "---\ntitle: Our team\n---\n\nUs.\n",
 		"content/drafty/drafty.md":             "---\ntitle: Drafty\ndraft: true\n---\n\nDraft.\n",
 		"content/blogs/blogs.md":               "---\ntitle: Blogs\n---\n\nThe blog.\n",
 		"content/blogs/blogs.html":             "{{.Intro}}{{range .SubPages}}<a href=\"{{$.Root}}{{.Link}}\">{{.Title}}</a>{{end}}\n",
@@ -187,12 +188,13 @@ func TestBuildRewritesLinks(t *testing.T) {
 			name:      "local build links relative to each page",
 			home:      "index.html",
 			about:     "about/about.html",
-			homeLinks: []string{`href="./about/about.html">About<`, `href="./about/about.html">About again<`},
+			homeLinks: []string{`href="./about/about.html">About<`, `href="./about/about.html">About again<`, `href="./about/about.html">About from above<`},
 			links: []string{
 				`href="../blogs/blogs.html"`,
 				`href="../blogs/20260101_first/post.html#top"`,
 				`href="../drafty/drafty.html"`,
 				`href="../nope"`,
+				`href="../our%20team/our%20team.html"`,
 				`src="../static/about/pic.png"`,
 			},
 			warnings:  []string{"links to ../nope, which isn't in the build"},
@@ -208,6 +210,7 @@ func TestBuildRewritesLinks(t *testing.T) {
 				`href="../blogs/blogs.html"`,
 				`href="../blogs/20260101_first/post.html#top"`,
 				`href="../drafty/drafty.html"`,
+				`href="../our%20team/our%20team.html"`,
 			},
 			warnings: []string{"links to /drafty, which isn't in the build"},
 		},
@@ -216,11 +219,12 @@ func TestBuildRewritesLinks(t *testing.T) {
 			opts:      Options{Publish: true},
 			home:      "index.html",
 			about:     "about/index.html",
-			homeLinks: []string{`href="/about">About<`, `href="/about">About again<`},
+			homeLinks: []string{`href="/about">About<`, `href="/about">About again<`, `href="/about">About from above<`},
 			links: []string{
 				`href="/blogs"`,
 				`href="/blogs/20260101_first#top"`,
 				`href="/drafty"`,
+				`href="/our%20team"`,
 				`src="../static/about/pic.png"`,
 			},
 			warnings: []string{"links to /drafty, which isn't in the build"},

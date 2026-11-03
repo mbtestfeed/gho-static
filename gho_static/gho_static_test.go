@@ -1,10 +1,13 @@
 package gho_static
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"gho-static/utils/file_access"
 )
 
 func TestPagePath(t *testing.T) {
@@ -70,8 +73,12 @@ func TestSplitLink(t *testing.T) {
 		{dest: "/about", wantPath: "/about", wantOK: true},
 		{dest: "#top"},
 		{dest: ""},
+		{dest: "./a:b.md#top", wantPath: "./a:b.md", wantSuffix: "#top", wantOK: true},
+		{dest: "../notes/a:b.md", wantPath: "../notes/a:b.md", wantOK: true},
 		{dest: "https://example.com/about"},
 		{dest: "mailto:me@example.com"},
+		{dest: "a:b.md"},
+		{dest: "//cdn.example.com/x.js"},
 	}
 	for _, c := range cases {
 		p, suffix, ok := splitLink(c.dest)
@@ -81,24 +88,29 @@ func TestSplitLink(t *testing.T) {
 	}
 }
 
-func TestEscapes(t *testing.T) {
+func TestResolve(t *testing.T) {
+	ls := loadedSite{site: filepath.Join(t.TempDir(), "mysite"), content: &file_access.ContentDir{Path: "content"}}
 	cases := []struct {
 		dir, p string
-		want   bool
+		want   string // or "" if it's outside the site folder
 	}{
-		{"content/about", "../blogs", false},
-		{"content/about", "../../index.md", false},
-		{"content/about", "../../../outside.md", true},
-		{".", "./about", false},
-		{".", "..", true},
-		{".", "../content/about", true},
-		{"content/about", "/blogs", false},
-		{"content/about", "/../index.md", false},
-		{"content/about", "/../../outside.md", true},
+		{"content/about", "../blogs", "content/blogs"},
+		{"content/about", "../../index.md", "index.md"},
+		{"content/about", "../../../outside.md", ""},
+		{"content/about", "../../../mysite/content/blogs", "content/blogs"},
+		{"content/about", "../../../other/content/blogs", ""},
+		{"content/about", "/blogs", "content/blogs"},
+		{"content/about", "/../index.md", "index.md"},
+		{"content/about", "/../../outside.md", ""},
+		{".", "./about", "content/about"},
+		{".", "./content/about", "content/about"},
+		{".", "../content/about", "content/about"},
+		{".", "../../outside.md", ""},
 	}
 	for _, c := range cases {
-		if got := escapes("content", c.dir, c.p); got != c.want {
-			t.Errorf("escapes(%q, %q) = %v, want %v", c.dir, c.p, got, c.want)
+		got, ok := ls.resolve(c.dir, c.p)
+		if ok != (c.want != "") || (ok && got != c.want) {
+			t.Errorf("resolve(%q, %q) = %q, %v, want %q", c.dir, c.p, got, ok, c.want)
 		}
 	}
 }

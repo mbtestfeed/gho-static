@@ -187,30 +187,21 @@ const mdExtensions = parser.CommonExtensions | parser.Footnotes | parser.AutoHea
 
 // splitLink splits a link's destination into its path, unescaped, and any
 // query or fragment after it. ok is false if it isn't to a file within the
-// site: it has a scheme (https:, mailto: and so on) or no path.
+// site: it has a scheme (https:, mailto: and so on), a host (as in
+// //example.com/x.js), or no path.
 func splitLink(dest string) (p, suffix string, ok bool) {
 	p = dest
 	if i := strings.IndexAny(dest, "?#"); i != -1 {
 		p, suffix = dest[:i], dest[i:]
 	}
-	if p == "" || strings.Contains(p, ":") {
+	// Parsed as browsers do, so a colon only means a scheme at the start.
+	if u, err := url.Parse(dest); p == "" || err != nil || u.Scheme != "" || u.Host != "" {
 		return "", "", false
 	}
 	if unescaped, err := url.PathUnescape(p); err == nil {
 		p = unescaped
 	}
 	return p, suffix, true
-}
-
-// escapes reports whether the link path p (from splitLink), relative to the
-// folder dir (slash separated, within the site folder), or to the content
-// folder content if it starts with "/", is outside the site folder.
-func escapes(content, dir, p string) bool {
-	if strings.HasPrefix(p, "/") {
-		dir = content
-	}
-	joined := path.Join(dir, p)
-	return joined == ".." || strings.HasPrefix(joined, "../")
 }
 
 // localLinks returns the destinations of md's links, and of its images,

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -42,6 +43,9 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 	if err != nil {
 		return err
 	}
+	if ls.site, err = filepath.Abs(outDir); err != nil {
+		return err
+	}
 	layout, err := ls.layout(version)
 	if err != nil {
 		return err
@@ -54,6 +58,7 @@ func buildSite(fsys fs.FS, outDir string, opts Options, version string) error {
 type loadedSite struct {
 	source
 	opts    Options
+	site    string // the site folder's absolute path
 	content *file_access.ContentDir
 	prefs   Preferences
 	tmpl    *template.Template // the layout and structure templates
@@ -535,23 +540,16 @@ func (ls loadedSite) planContent(layout Page, shared map[string][]string) (conte
 // (see mdToHTML). Other links are left as they are.
 func (ls loadedSite) links(dir, root string) func(string) string {
 	content := ls.content.Path
+	// Built links are percent-encoded, as written ones are.
+	escape := func(p string) string { return (&url.URL{Path: p}).EscapedPath() }
 	return func(dest string) string {
 		p, suffix, ok := splitLink(dest)
 		if !ok {
 			return dest
 		}
 		// Links outside the site folder are removed (see warnBrokenLinks).
-		if escapes(content, dir, p) {
+		if p, ok = ls.resolve(dir, p); !ok {
 			return ""
-		}
-		if strings.HasPrefix(p, "/") {
-			p = path.Join(content, p)
-		} else if joined := path.Join(dir, p); dir == "." && joined != content && !strings.HasPrefix(joined, content+"/") {
-			// The home page is outside the content folder, so its links can
-			// be from either.
-			p = path.Join(content, p)
-		} else {
-			p = joined
 		}
 		stem := ""
 		if utils.HasExt(p, ".md", ".html") {
@@ -598,10 +596,36 @@ func (ls loadedSite) links(dir, root string) func(string) string {
 			return dest
 		}
 		if ls.opts.Publish {
-			return "/" + strings.TrimSuffix(link, "/") + suffix
+			return escape("/"+strings.TrimSuffix(link, "/")) + suffix
 		}
-		return root + link + suffix
+		return root + escape(link) + suffix
 	}
+}
+
+// resolve returns the path (slash separated, within the site folder) the
+// link path p (from splitLink) is to, from a page whose markdown is in the
+// folder dir (slash separated, within the site folder): relative to dir, or
+// to the content folder if it starts with "/". The home page is outside the
+// content folder, so its relative links can be from either. ok is false if
+// the path is outside the site folder; it's fine for p to leave the site
+// folder on the way, as long as it ends inside it.
+func (ls loadedSite) resolve(dir, p string) (resolved string, ok bool) {
+	content := ls.content.Path
+	// Joined from the site folder's absolute path, so leaving it and coming
+	// back in by its name ends inside it.
+	within := func(p string) string {
+		rel, err := filepath.Rel(ls.site, filepath.Join(ls.site, filepath.FromSlash(p)))
+		if err != nil {
+			return ".."
+		}
+		return filepath.ToSlash(rel)
+	}
+	if strings.HasPrefix(p, "/") {
+		resolved = within(path.Join(content, p))
+	} else if resolved = within(path.Join(dir, p)); dir == "." && resolved != content && !strings.HasPrefix(resolved, content+"/") {
+		resolved = within(path.Join(content, p))
+	}
+	return resolved, resolved != ".." && !strings.HasPrefix(resolved, "../")
 }
 
 // warnBrokenLinks writes a warning for each link, in the home page's or a
@@ -613,12 +637,14 @@ func (ls loadedSite) warnBrokenLinks(plan contentPlan, buildDir string) {
 		toPage := ls.links(dir, rootFor(file))
 		links, images := localLinks(md)
 		for _, dest := range slices.Concat(links, images) {
-			if p, _, _ := splitLink(dest); escapes(ls.content.Path, dir, p) {
+			p, _, _ := splitLink(dest)
+			if _, ok := ls.resolve(dir, p); !ok {
 				ls.opts.Output.Warnf("%s links to %s, which is outside the site folder, so it was removed: all content must be within the site folder", src, dest)
 			}
 		}
 		for _, link := range links {
-			if p, _, _ := splitLink(link); escapes(ls.content.Path, dir, p) {
+			p, _, _ := splitLink(link)
+			if _, ok := ls.resolve(dir, p); !ok {
 				continue
 			}
 			p, _, ok := splitLink(toPage(link))
