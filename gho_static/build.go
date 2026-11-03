@@ -172,7 +172,7 @@ func (ls loadedSite) layout(version string) (Page, error) {
 		if err != nil {
 			return Page{}, err
 		}
-		navLinks = append(navLinks, NavLink{Name: strings.ToUpper(name[:1]) + name[1:], Link: link, Draft: draft, Unreleased: unreleased})
+		navLinks = append(navLinks, NavLink{Name: utils.TitleFor(name), Link: link, Draft: draft, Unreleased: unreleased})
 	}
 
 	home := "index.html"

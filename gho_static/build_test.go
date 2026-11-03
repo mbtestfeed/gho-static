@@ -248,6 +248,15 @@ func TestBuildRewritesLinks(t *testing.T) {
 	}
 }
 
+func TestBuildNavLinks(t *testing.T) {
+	site := testSite(t)
+	writeTestFile(t, filepath.Join(site, "settings.yaml"), "nav_links: [about, élan_vital]\nshow_intro_sidebar: false\ncollections_displayed_in_recent_sidebar: []\n")
+	writeTestFile(t, filepath.Join(site, "structure", "header", "header.html"), "<header>{{range .Site.NavLinks}}<a>{{.Name}}</a>{{end}}</header>\n")
+	writeTestFile(t, filepath.Join(site, "content", "élan_vital", "élan_vital.md"), "---\ntitle: Élan vital\n---\n")
+	buildTestSite(t, site, Options{})
+	assertContains(t, "index.html", readBuilt(t, site, "index.html"), "<a>About</a><a>Élan vital</a>")
+}
+
 func TestBuildReplacesPreviousBuild(t *testing.T) {
 	site := testSite(t)
 	writeTestFile(t, filepath.Join(site, "build", ".git", "HEAD"), "ref: refs/heads/main\n")
