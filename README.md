@@ -157,7 +157,7 @@ Single-letter flags can be combined, e.g. `-cy`. Run `gho-static --help` for the
 mysite/
   settings.yaml         site name, menu links, theme, sidebars, deployment
   index.md              the home page
-  index.html            the page layout every page is built into
+  index.template.html   the page layout every page is built into (index.html in older sites also works)
   content/              your pages and posts
   structure/            the header, footer and sidebars' HTML
   theme_templates/      the site's look: each theme's CSS, colours and font
@@ -244,7 +244,7 @@ To link to another page, link to its folder or its markdown file, either relativ
 
 ### Blog posts and listings
 
-A folder with an HTML file in it, like `content/blogs/blogs.html`, is a listing page: it lists each of its subfolders' posts, newest first, after an intro from the markdown file in the same folder. Post folders are named `YYYYMMDD_<name>`, each with a `post.md` inside. Posts in the same listing get previous and next links.
+A folder with an HTML file in it, like `content/blogs/blogs.template.html` (or `blogs.html` in older sites), is a listing page: it lists each of its subfolders' posts, newest first, after an intro from the markdown file in the same folder. Post folders are named `YYYYMMDD_<name>`, each with a `post.md` inside. Posts in the same listing get previous and next links.
 
 ### Special collections
 

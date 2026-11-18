@@ -92,6 +92,15 @@ func TestNewOrEmptyFolder(t *testing.T) {
 	if err := NewOrEmptyFolder(dir); err != nil {
 		t.Errorf("NewOrEmptyFolder on an empty folder returned %v, want nil", err)
 	}
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewOrEmptyFolder(dir); err != nil {
+		t.Errorf("NewOrEmptyFolder on a folder with only hidden files returned %v, want nil", err)
+	}
 	file := filepath.Join(dir, "a.txt")
 	if err := os.WriteFile(file, nil, 0644); err != nil {
 		t.Fatal(err)

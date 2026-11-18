@@ -71,7 +71,7 @@ func newVersion() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// Page is the data index.html and the structure templates are executed with.
+// Page is the data index.template.html and the structure templates are executed with.
 type Page struct {
 	Site           *Site
 	Root           string // relative path from the page to the build folder
@@ -476,7 +476,7 @@ func PagePath(src, root string, publish bool) (file, link string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	return source{FS: os.DirFS(root)}.pagePath(filepath.ToSlash(rel), ".", publish)
+	return source{FS: file_access.TemplateFS{FS: os.DirFS(root)}}.pagePath(filepath.ToSlash(rel), ".", publish)
 }
 
 // pagePath is PagePath for src and root in s.

@@ -24,7 +24,7 @@ func Build(site string, opts Options) (string, error) {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
 	version := newVersion()
-	if err := buildSite(os.DirFS(site), site, opts, version); err != nil {
+	if err := buildSite(file_access.TemplateFS{FS: os.DirFS(site)}, site, opts, version); err != nil {
 		return "", err
 	}
 	return version, nil
@@ -75,7 +75,7 @@ func loadSite(fsys fs.FS, opts Options) (loadedSite, error) {
 	}
 
 	if !file_access.FileExists(fsys, "index.html") {
-		return loadedSite{}, fmt.Errorf("missing index.html in the site folder")
+		return loadedSite{}, fmt.Errorf("missing index.template.html in the site folder")
 	}
 	if !file_access.FileExists(fsys, "index.md") {
 		return loadedSite{}, fmt.Errorf("missing index.md in the site folder")

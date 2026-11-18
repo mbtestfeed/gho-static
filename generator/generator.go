@@ -175,20 +175,21 @@ const cleanIndexText = "You've built a static website in 'Clean' mode. There's n
 // addListing adds a post listing page at path (slash separated, without
 // extension) to files, with a markdown intro titled after name.
 func addListing(files map[string]string, path, name string) {
-	addPage(files, path, ".html", listingPageTemplate, listingCSS)
+	addPage(files, path, file_access.TemplateSuffix, listingPageTemplate, listingCSS)
 	files[path+".md"] = "# " + utils.TitleFor(name) + "\n"
 }
 
 // addGallery adds the gallery page, linking to each post in its folder by
 // its image, to files.
 func addGallery(files map[string]string) {
-	addPage(files, "content/gallery/gallery", ".html", galleryPageTemplate, galleryCSS)
+	addPage(files, "content/gallery/gallery", file_access.TemplateSuffix, galleryPageTemplate, galleryCSS)
 	files["content/gallery/gallery.md"] = "# Gallery\n"
 }
 
 // Generate writes a starter site with the given preferences into dir, with
 // images copied into static/img. dir is created, unless it's an existing
-// empty folder; any other existing dir is an os.IsExist error.
+// empty folder (see file_access.IsEmptyFolder), whose hidden files are kept;
+// any other existing dir is an os.IsExist error.
 // themes holds a themes folder laid out as in a site: its default theme and
 // custom themes readme are copied, and its other themes listed in the themes
 // showcase. A logo or favicon other than the default is
@@ -226,6 +227,13 @@ func Generate(dir string, prefs gho_static.Preferences, images, themes fs.FS, re
 	maps.Copy(files, custom)
 	if err := file_access.NewOrEmptyFolder(dir); err != nil {
 		return err
+	}
+	// Hidden files already in an empty folder, such as a git repo's
+	// .gitignore, are kept in place of the starter site's.
+	for name := range files {
+		if strings.HasPrefix(filepath.Base(name), ".") && file_access.FileExists(os.DirFS(dir), name) {
+			delete(files, name)
+		}
 	}
 	return file_access.WriteFiles(dir, files)
 }

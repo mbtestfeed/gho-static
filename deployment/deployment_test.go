@@ -163,7 +163,7 @@ func testSite(t *testing.T) string {
 	site := t.TempDir()
 	for name, data := range map[string]string{
 		"settings.yaml":                "nav_links: [about]\nshow_intro_sidebar: false\ncollections_displayed_in_recent_sidebar: []\n",
-		"index.html":                   "<html>{{.Content}}</html>\n",
+		"index.template.html":         "<html>{{.Content}}</html>\n",
 		"index.md":                     "# Home\n",
 		"structure/header/header.html": "",
 		"structure/footer/footer.html": "",

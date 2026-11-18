@@ -23,7 +23,7 @@ func testSite(t *testing.T) string {
 	site := t.TempDir()
 	files := map[string]string{
 		"settings.yaml":                "nav_links: [about, blogs]\nshow_intro_sidebar: false\ncollections_displayed_in_recent_sidebar: []\n",
-		"index.html":                   "<html>{{.Header}}{{.Content}}{{.Footer}}</html>\n",
+		"index.template.html":         "<html>{{.Header}}{{.Content}}{{.Footer}}</html>\n",
 		"index.md":                     "---\ntitle: Home\n---\n\n[About](./about) [About again](./content/about/about.md) [About from above](../content/about)\n",
 		"structure/header/header.html": "<header></header>\n",
 		"structure/footer/footer.html": "<footer></footer>\n",

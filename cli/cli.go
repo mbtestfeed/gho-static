@@ -13,6 +13,7 @@ import (
 	"gho-static/gho_static"
 	"gho-static/utils"
 	"gho-static/utils/dates"
+	"gho-static/utils/file_access"
 )
 
 const Usage = `Usage: gho-static [flags] <site folder>
@@ -358,8 +359,8 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 		if info, err := os.Stat(cmd.Site); err != nil || !info.IsDir() {
 			return cmd, fmt.Errorf("site folder %s doesn't exist. If it's a new site, create it first with `gho-static --generate %s`.", cmd.Site, cmd.Site)
 		}
-		if _, err := os.Stat(filepath.Join(cmd.Site, "index.html")); err != nil {
-			return cmd, fmt.Errorf("%s isn't a Gho-Static site, as it has no index.html. If it's a new site, create it first with `gho-static --generate %s`.", cmd.Site, cmd.Site)
+		if !file_access.FileExists(file_access.TemplateFS{FS: os.DirFS(cmd.Site)}, "index.html") {
+			return cmd, fmt.Errorf("%s isn't a Gho-Static site, as it has no index.template.html. If it's a new site, create it first with `gho-static --generate %s`.", cmd.Site, cmd.Site)
 		}
 	case Deploy, SetupDeployment:
 		// The method saved in settings.yaml is used unless one is given,
@@ -405,11 +406,11 @@ func Resolve(cmd Command, t Terminal, now time.Time) (Command, error) {
 		}
 	case GenerateSite:
 		// Check before prompting so the answers aren't wasted. An empty
-		// folder is generated into as it is.
-		if entries, err := os.ReadDir(cmd.GenPath); err == nil && len(entries) > 0 {
-			return cmd, fmt.Errorf("%s already exists, and isn't empty", cmd.GenPath)
-		} else if info, err := os.Stat(cmd.GenPath); err == nil && !info.IsDir() {
+		// folder, or one with only hidden files, is generated into as it is.
+		if info, err := os.Stat(cmd.GenPath); err == nil && !info.IsDir() {
 			return cmd, fmt.Errorf("%s already exists, and isn't a folder", cmd.GenPath)
+		} else if err == nil && !file_access.IsEmptyFolder(cmd.GenPath) {
+			return cmd, fmt.Errorf("%s already exists, and isn't empty", cmd.GenPath)
 		}
 		if err := chooseMethod(!cmd.Yes); err != nil {
 			return cmd, err
