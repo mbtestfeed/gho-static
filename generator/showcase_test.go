@@ -59,7 +59,7 @@ func TestAddShowcase(t *testing.T) {
 	if err := addShowcase(files, map[string]string{}, testThemes(), pageMeta{}, testNow); err != nil {
 		t.Fatal(err)
 	}
-	page := files["content/themes/themes.html"]
+	page := files["content/themes/themes.template.html"]
 	for _, want := range []string{`$.ThemePage "default_developer_ugly"`, `{{"Plain."}}`, `$.ThemePage "brochureware"`, `{{"Shiny."}}`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the showcase page doesn't contain %q:\n%s", want, page)

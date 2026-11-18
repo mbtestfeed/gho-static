@@ -106,22 +106,22 @@ func TestSiteFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertFiles(t, files, []string{
-		"index.html", "index.js", "structure/header/header.html",
+		"index.template.html", "index.js", "structure/header/header.template.html",
 		"static/img/favicon.ico",
 		"theme_templates/gho_static_themes/default_developer_ugly/theme.css",
 		"theme_templates/custom_themes/README.md",
 		"content/about/about.md", "content/about/about.css", "content/about/about.js",
 		"content/contact/contact.md",
-		"content/blogs/blogs.html", "content/blogs/blogs.md",
+		"content/blogs/blogs.template.html", "content/blogs/blogs.md",
 		"content/blogs/20260601_example_1/post.md",
 		"content/blogs/20260501_example_2/post.md",
 		"content/blogs/20260401_example_3/post.md",
-		"content/gallery/gallery.html",
+		"content/gallery/gallery.template.html",
 		"content/gallery/20260531_august_kittens_7/post.md",
 		"content/gallery/20260531_august_kittens_7/august_kittens_7.jpg",
 		"content/gallery/20260601_all_kitten_pictures/august_kittens_4.jpg",
 		"content/gallery/20260527_gallery_post_without_an_image/post.md",
-		"content/themes/themes.html", "content/themes/themes.md",
+		"content/themes/themes.template.html", "content/themes/themes.md",
 		"content/themes/20260601_default_developer_ugly/post.md",
 		"content/themes/20260531_brochureware/post.md",
 		"content/themes/20260531_brochureware/august_kittens_9.jpg",
@@ -151,7 +151,7 @@ func TestSiteFiles(t *testing.T) {
 			t.Errorf("the first example post doesn't contain %q:\n%s", want, example)
 		}
 	}
-	showcase := files["content/themes/themes.html"]
+	showcase := files["content/themes/themes.template.html"]
 	if d, b := strings.Index(showcase, `"default_developer_ugly"`), strings.Index(showcase, `"brochureware"`); d == -1 || b == -1 || d > b {
 		t.Errorf("the showcase page doesn't list the default theme then brochureware:\n%s", showcase)
 	}
@@ -169,12 +169,12 @@ func TestSiteFilesClean(t *testing.T) {
 	}
 	assertFiles(t, files, []string{
 		"content/about/about.md", "content/contact/contact.md",
-		"content/blogs/blogs.html", "content/blogs/20260601_first_post/post.md",
-		"content/gallery/gallery.html",
+		"content/blogs/blogs.template.html", "content/blogs/20260601_first_post/post.md",
+		"content/gallery/gallery.template.html",
 	}, []string{
 		"content/blogs/20260601_example_1/post.md",
 		"content/gallery/20260601_all_kitten_pictures/post.md",
-		"content/themes/themes.html",
+		"content/themes/themes.template.html",
 	})
 	for name := range files {
 		if strings.HasPrefix(name, "content/themes/") || strings.HasPrefix(name, "static/img/demo_pics/") {
@@ -251,8 +251,29 @@ func TestGenerate(t *testing.T) {
 	if err := Generate(empty, gho_static.DefaultPreferences, testImages(), testThemes(), "", true); err != nil {
 		t.Fatalf("generating into an empty folder failed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(empty, "index.html")); err != nil {
+	if _, err := os.Stat(filepath.Join(empty, "index.template.html")); err != nil {
 		t.Errorf("the site wasn't generated in the empty folder: %v", err)
+	}
+
+	// A new git repo's hidden files are kept, its .gitignore included.
+	repo := t.TempDir()
+	for name, data := range map[string]string{".git/HEAD": "ref", ".gitignore": "mine\n"} {
+		p := filepath.Join(repo, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Generate(repo, gho_static.DefaultPreferences, testImages(), testThemes(), "", true); err != nil {
+		t.Fatalf("generating into a folder with only hidden files failed: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(repo, ".gitignore")); string(b) != "mine\n" {
+		t.Errorf(".gitignore = %q, want the folder's own kept", b)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "index.template.html")); err != nil {
+		t.Errorf("the site wasn't generated in the folder with only hidden files: %v", err)
 	}
 }
 
@@ -337,7 +358,7 @@ func TestGeneratePost(t *testing.T) {
 	if want := contentPage("first", testNow, pageMeta{draft: true, clean: true}); string(md) != want {
 		t.Errorf("post.md = %q, want %q", md, want)
 	}
-	listing, err := os.ReadFile(filepath.Join(content, "news", "news.html"))
+	listing, err := os.ReadFile(filepath.Join(content, "news", "news.template.html"))
 	if err != nil {
 		t.Fatalf("the new collection has no listing page: %v", err)
 	}
@@ -346,13 +367,13 @@ func TestGeneratePost(t *testing.T) {
 	}
 
 	// A second post leaves the collection's listing as it is.
-	if err := os.WriteFile(filepath.Join(content, "news", "news.html"), []byte("edited"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(content, "news", "news.template.html"), []byte("edited"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := GeneratePost(filepath.Join(content, "news", "20260602_second"), "second", "", false, testNow); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(content, "news", "news.html")); string(b) != "edited" {
+	if b, _ := os.ReadFile(filepath.Join(content, "news", "news.template.html")); string(b) != "edited" {
 		t.Errorf("the listing page was replaced: %q", b)
 	}
 }

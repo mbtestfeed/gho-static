@@ -251,7 +251,7 @@ func (s source) undatedPage(dir *file_access.ContentDir) string {
 
 // readContent crawls and reads the content folder of the site at srcDir.
 func readContent(srcDir string) (source, *file_access.ContentDir, error) {
-	fsys := os.DirFS(srcDir)
+	fsys := file_access.TemplateFS{FS: os.DirFS(srcDir)}
 	content, err := file_access.CrawlContent(fsys, "content")
 	if err != nil {
 		return source{}, nil, err

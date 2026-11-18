@@ -15,6 +15,7 @@ import (
 	"gho-static/gho_static"
 	"gho-static/utils"
 	"gho-static/utils/dates"
+	"gho-static/utils/file_access"
 )
 
 // showcaseItem is a theme's entry in the themes showcase page: a link to
@@ -116,7 +117,7 @@ func addShowcase(files, pics map[string]string, themes fs.FS, meta pageMeta, now
 	}
 
 	page := "content/" + gho_static.ShowcaseDir + "/" + gho_static.ShowcaseDir
-	addPage(files, page, ".html", fmt.Sprintf(showcasePageTemplate, items.String()), showcaseCSS)
+	addPage(files, page, file_access.TemplateSuffix, fmt.Sprintf(showcasePageTemplate, items.String()), showcaseCSS)
 	files[page+".md"] = showcaseIntro
 	return nil
 }

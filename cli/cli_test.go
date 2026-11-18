@@ -175,8 +175,9 @@ func wantErr(t *testing.T, err error, want string) {
 }
 
 func TestResolveGenerateSite(t *testing.T) {
-	existing, empty := t.TempDir(), t.TempDir()
-	writeFiles(t, existing, map[string]string{"notes.txt": ""})
+	existing, empty, hidden := t.TempDir(), t.TempDir(), t.TempDir()
+	writeFiles(t, existing, map[string]string{"notes.txt": "", ".gitignore": ""})
+	writeFiles(t, hidden, map[string]string{".git/HEAD": "", ".gitignore": ""})
 	file := filepath.Join(existing, "notes.txt")
 	cases := []struct {
 		name         string
@@ -192,6 +193,7 @@ func TestResolveGenerateSite(t *testing.T) {
 		{name: "existing folder", args: []string{"-gy"}, site: existing, wantErr: "already exists, and isn't empty"},
 		{name: "existing file", args: []string{"-gy"}, site: file, wantErr: "already exists, and isn't a folder"},
 		{name: "empty folder is used", args: []string{"-gy"}, site: empty, wantMethod: "none"},
+		{name: "folder with only hidden files is used", args: []string{"-gy"}, site: hidden, wantMethod: "none"},
 		{name: "yes deploys nowhere", args: []string{"-gy"}, wantMethod: "none"},
 		{
 			name: "asks for the method and its settings", args: []string{"-g"}, input: "1\nme\n", interactive: true,
@@ -337,14 +339,14 @@ func TestResolveGeneratePageAndPost(t *testing.T) {
 
 func TestResolveBuild(t *testing.T) {
 	empty, site := t.TempDir(), t.TempDir()
-	writeFiles(t, site, map[string]string{"index.html": ""})
+	writeFiles(t, site, map[string]string{"index.template.html": ""})
 	cases := []struct {
 		name    string
 		site    string
 		wantErr string
 	}{
 		{name: "missing folder", site: filepath.Join(t.TempDir(), "missing"), wantErr: "doesn't exist. If it's a new site, create it first with `gho-static --generate"},
-		{name: "folder without index.html", site: empty, wantErr: "has no index.html. If it's a new site, create it first with `gho-static --generate"},
+		{name: "folder without index.template.html", site: empty, wantErr: "has no index.template.html. If it's a new site, create it first with `gho-static --generate"},
 		{name: "site", site: site},
 	}
 	for _, c := range cases {
